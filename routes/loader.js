@@ -4,7 +4,7 @@ const path = require("path");
 
 const router = express.Router();
 
-const SCRIPT_PATH = path.join(__dirname, "script/script.lua");
+const SCRIPT_PATH = path.join(__dirname, "../script/script.lua");
 
 router.get("/loader", (req, res) => {
     try {
