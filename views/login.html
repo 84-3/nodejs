@@ -1,27 +1,203 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Login - SFXDarei Manager</title>
-  <link rel="stylesheet" href="../css/styles.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SFXDarei Manager</title>
+    <style>
+        /* Base Reset & Typography */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Deep black to dark blue background gradient */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #020202 0%, #071224 50%, #0d1f3d 100%);
+            overflow: hidden;
+        }
+
+        /* Dark Fluent / Glassmorphism Form Design */
+        .login-container {
+            background: rgba(13, 27, 42, 0.35);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 40px 50px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Top Middle Text */
+        .logo-text {
+            color: #ffffff;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 40px;
+            text-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            letter-spacing: 1px;
+            text-align: center;
+        }
+
+        /* Upper half input grouping */
+        .input-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 35px;
+        }
+
+        /* Wrapper for absolute positioning of the icon */
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        /* Glossy Dark Inputs */
+        input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+            font-size: 1rem;
+            color: #ffffff;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        /* Extra right padding so text doesn't type under the icon */
+        #password {
+            padding-right: 45px;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 400;
+        }
+
+        input:focus {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(64, 134, 244, 0.4);
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 12px rgba(30, 90, 180, 0.5);
+            transform: scale(1.02);
+        }
+
+        /* Eye Icon Styling */
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.3s ease;
+            z-index: 2; 
+        }
+
+        .toggle-password:hover {
+            color: #ffffff;
+        }
+
+        /* Fancy Glossy Blue Button */
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.25) 50%, rgba(255, 255, 255, 0) 100%);
+            transform: skewX(-25deg);
+            transition: all 0.5s ease;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(42, 82, 152, 0.4);
+        }
+
+        .login-btn:hover::before {
+            left: 150%;
+        }
+    </style>
 </head>
 <body>
-  <main style="max-width:420px;margin:6rem auto;padding:2rem;border:1px solid #ddd;border-radius:6px;">
-    <h1>Sign In</h1>
-    <form method="post" action="/login">
-      <div>
-        <label for="username">Username</label>
-        <input id="username" name="username" required />
-      </div>
-      <div style="margin-top:0.5rem;">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" required />
-      </div>
-      <div style="margin-top:1rem;">
-        <button type="submit">Sign in</button>
-      </div>
+
+    <form method="post" action="/login" class="login-container">
+        <h1 class="logo-text">SFXDarei</h1>
+        
+        <div class="input-group">
+            <input type="text" id="username" name="username" placeholder="Username" required autocomplete="off">
+            
+            <div class="password-wrapper">
+                <input type="password" id="password" name="password" placeholder="Password" required>
+                <span class="toggle-password" id="togglePassword">
+                    <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </span>
+            </div>
+        </div>
+        
+        <button type="submit" class="login-btn">Sign in</button>
     </form>
-  </main>
+
+    <script>
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+
+        togglePassword.addEventListener('click', function () {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+
+            if (type === 'text') {
+                this.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>`;
+            } else {
+                this.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>`;
+            }
+        });
+    </script>
 </body>
 </html>
