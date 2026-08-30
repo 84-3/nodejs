@@ -133,14 +133,21 @@ router.get("/script", async (req, res) => {
 });
 
 router.put("/script", async (req, res) => {
-    const content = typeof req.body.content === "string" ? req.body.content : null;
+    const content =
+        typeof req.body.content === "string"
+            ? req.body.content
+            : null;
 
     if (content === null) {
-        return res.status(400).json({ error: "Script content is required." });
+        return res.status(400).json({
+            error: "Script content is required."
+        });
     }
 
     if (content.length > 1000000) {
-        return res.status(413).json({ error: "Script is too large." });
+        return res.status(413).json({
+            error: "Script is too large."
+        });
     }
 
     try {
@@ -154,6 +161,7 @@ router.put("/script", async (req, res) => {
             });
         }
 
+        // 1. Commit to GitHub
         const result = await updateFile(
             SCRIPT_PATH,
             content,
@@ -161,14 +169,57 @@ router.put("/script", async (req, res) => {
             file.sha
         );
 
-        res.json({
+        // 2. Trigger Railway deployment
+        const deployResponse = await fetch(
+            "https://backboard.railway.com/graphql/v2",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization":
+                        `Bearer ${process.env.RAILWAY_API_TOKEN}`
+                },
+                body: JSON.stringify({
+                    query: `
+                        mutation serviceInstanceDeploy(
+                            $serviceId: String!
+                            $environmentId: String!
+                        ) {
+                            serviceInstanceDeploy(
+                                serviceId: $serviceId
+                                environmentId: $environmentId
+                            )
+                        }
+                    `,
+                    variables: {
+                        serviceId:
+                            process.env.RAILWAY_SERVICE_ID,
+                        environmentId:
+                            process.env.RAILWAY_ENVIRONMENT_ID
+                    }
+                })
+            }
+        );
+
+        if (!deployResponse.ok) {
+            throw new Error(
+                `Railway deployment failed: ${deployResponse.status}`
+            );
+        }
+
+        return res.json({
             success: true,
             changed: true,
-            commit: result
+            commit: result,
+            deploymentTriggered: true
         });
+
     } catch (error) {
         console.error("[API] PUT script:", error);
-        res.status(500).json({ error: "Failed to update script.lua." });
+
+        return res.status(500).json({
+            error: "Failed to update script.lua."
+        });
     }
 });
 
