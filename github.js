@@ -21,7 +21,13 @@ async function getFile(pathname) {
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
         path: pathname,
-        ref: GITHUB_BRANCH
+        ref: GITHUB_BRANCH,
+
+        // Prevent cached responses.
+        headers: {
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+        }
     });
 
     if (Array.isArray(data) || data.type !== "file") {
@@ -66,7 +72,13 @@ async function getLatestCommit() {
     const { data } = await octokit.rest.repos.getBranch({
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
-        branch: GITHUB_BRANCH
+        branch: GITHUB_BRANCH,
+
+        // Prevent cached branch information.
+        headers: {
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+        }
     });
 
     return {
