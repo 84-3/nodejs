@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SFXDarei Manager</title>
+    <link rel="stylesheet" href="../public/css/dashboard.css">
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">S</div>
+            <div>
+                <strong>SFXDarei</strong>
+                <span>Manager</span>
+            </div>
+        </div>
+
+        <nav>
+            <button class="nav-item active" data-section="dashboard">
+                <span>⌂</span> Dashboard
+            </button>
+            <button class="nav-item" data-section="users">
+                <span>◉</span> Users
+            </button>
+            <button class="nav-item" data-section="script">
+                <span>⌘</span> Script
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="status-dot"></span>
+            Railway deployment
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div>
+                <h1 id="page-title">Dashboard</h1>
+                <p id="page-subtitle">Manage your script and authorized users.</p>
+            </div>
+            <button class="refresh-btn" id="refresh">Refresh</button>
+        </header>
+
+        <section id="dashboard-section" class="section active">
+            <div class="cards">
+                <div class="card">
+                    <span class="card-label">Authorized users</span>
+                    <strong id="user-count">—</strong>
+                </div>
+                <div class="card">
+                    <span class="card-label">Branch</span>
+                    <strong>main</strong>
+                </div>
+                <div class="card">
+                    <span class="card-label">Repository</span>
+                    <strong>84-3/nodejs</strong>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Latest commit</h2>
+                        <p>The commit Railway uses for deployment.</p>
+                    </div>
+                </div>
+                <div id="commit-info" class="commit-info">Loading…</div>
+            </div>
+        </section>
+
+        <section id="users-section" class="section">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Authorized users</h2>
+                        <p>Changes are committed directly to GitHub.</p>
+                    </div>
+                    <button class="primary-btn" id="add-user">+ Add user</button>
+                </div>
+
+                <div class="search-row">
+                    <input id="user-search" type="search" placeholder="Search usernames…">
+                    <span id="user-total" class="muted">— users</span>
+                </div>
+
+                <div id="users-list" class="users-list">Loading…</div>
+            </div>
+        </section>
+
+        <section id="script-section" class="section">
+            <div class="panel script-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Roblox script</h2>
+                        <p>Changes are committed to <code>script/script.lua</code>.</p>
+                    </div>
+                    <button class="primary-btn" id="save-script">Save &amp; Commit</button>
+                </div>
+
+                <div class="editor-wrap">
+                    <div class="editor-bar">
+                        <span>script.lua</span>
+                        <span id="script-state">Loading…</span>
+                    </div>
+                    <textarea id="script-editor" spellcheck="false"></textarea>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div id="modal" class="modal hidden">
+    <div class="modal-card">
+        <button class="modal-close" id="modal-close">×</button>
+        <h2 id="modal-title">Add user</h2>
+        <p id="modal-text">Enter the Roblox username you want to authorize.</p>
+        <input id="modal-input" type="text" maxlength="32" autocomplete="off" placeholder="Username">
+        <div class="modal-actions">
+            <button class="secondary-btn" id="modal-cancel">Cancel</button>
+            <button class="primary-btn" id="modal-confirm">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../public/js/dashboard.js"></script>
+</body>
+</html>
