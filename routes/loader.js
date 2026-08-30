@@ -1,23 +1,29 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
+
+const { getFile } = require("../github");
 
 const router = express.Router();
 
-const SCRIPT_PATH = path.join(__dirname, "../script/script.lua");
-
-router.get("/loader", (req, res) => {
+router.get("/loader", async (req, res) => {
     try {
-        const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+        const file = await getFile("script/script.lua");
 
-        res.type("text/plain; charset=utf-8");
-        res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.set("Content-Type", "text/plain; charset=utf-8");
+        res.set(
+            "Cache-Control",
+            "no-store, no-cache, must-revalidate, proxy-revalidate"
+        );
         res.set("Pragma", "no-cache");
         res.set("Expires", "0");
-        res.send(script);
+
+        return res.status(200).send(file.content);
     } catch (error) {
-        console.error("[Loader] Failed to read script:", error);
-        res.status(500).type("text/plain").send("-- Failed to load script.");
+        console.error("[Loader] Failed to fetch script:", error);
+
+        return res
+            .status(500)
+            .set("Content-Type", "text/plain; charset=utf-8")
+            .send("-- Failed to load script.");
     }
 });
 
