@@ -7,7 +7,8 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.19.2",
-    "octokit": "^5.0.5"
+    "octokit": "^5.0.5",
+    "express-session": "^1.17.3"
   },
   "scripts": {
     "start": "node app.js"
