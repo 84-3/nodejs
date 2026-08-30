@@ -10,8 +10,8 @@ const {
 
 const router = express.Router();
 
-const USERS_PATH = "../data/users.json";
-const SCRIPT_PATH = "../script/script.lua";
+const USERS_PATH = "data/users.json";
+const SCRIPT_PATH = "script/script.lua";
 
 function requireDashboardAuth(req, res, next) {
     if (req.session && req.session.authenticated) return next();
