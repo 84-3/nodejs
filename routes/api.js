@@ -14,32 +14,8 @@ const USERS_PATH = "../data/users.json";
 const SCRIPT_PATH = "../script/script.lua";
 
 function requireDashboardAuth(req, res, next) {
-    const header = req.headers.authorization || "";
-
-    if (!header.startsWith("Basic ")) {
-        res.set("WWW-Authenticate", 'Basic realm="SFXDarei Manager"');
-        return res.status(401).json({ error: "Authentication required." });
-    }
-
-    let credentials = "";
-    try {
-        credentials = Buffer.from(header.slice(6), "base64").toString("utf8");
-    } catch {}
-
-    const separator = credentials.indexOf(":");
-    const username = separator >= 0 ? credentials.slice(0, separator) : "";
-    const password = separator >= 0 ? credentials.slice(separator + 1) : "";
-
-    if (
-        username !== "admin" ||
-        !process.env.DASHBOARD_PASSWORD ||
-        password !== process.env.DASHBOARD_PASSWORD
-    ) {
-        res.set("WWW-Authenticate", 'Basic realm="SFXDarei Manager"');
-        return res.status(401).json({ error: "Invalid credentials." });
-    }
-
-    next();
+    if (req.session && req.session.authenticated) return next();
+    return res.status(401).json({ error: "Authentication required." });
 }
 
 router.use(requireDashboardAuth);
