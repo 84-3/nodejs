@@ -1,0 +1,138 @@
+* { box-sizing: border-box; }
+
+:root {
+    --bg: #0b0d12;
+    --panel: #11151d;
+    --panel-2: #151a23;
+    --border: #252c38;
+    --text: #f4f6f8;
+    --muted: #8993a3;
+    --accent: #ff6600;
+    --accent-2: #ff8a3d;
+    --danger: #ff4d5f;
+}
+
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+
+.app { display: flex; min-height: 100vh; }
+
+.sidebar {
+    width: 245px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: #0d1016;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 30px; }
+.brand-mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #ff3d00);
+    font-weight: 800;
+}
+.brand strong { display: block; font-size: 15px; }
+.brand span { color: var(--muted); font-size: 12px; }
+
+nav { display: grid; gap: 6px; }
+.nav-item {
+    border: 0; background: transparent; color: var(--muted);
+    padding: 11px 12px; border-radius: 9px; text-align: left;
+    display: flex; align-items: center; gap: 11px;
+}
+.nav-item:hover, .nav-item.active { background: var(--panel-2); color: var(--text); }
+.nav-item.active { box-shadow: inset 2px 0 var(--accent); }
+.nav-item span { width: 18px; text-align: center; }
+
+.sidebar-footer { margin-top: auto; color: var(--muted); font-size: 12px; padding: 14px 8px 0; }
+.status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #45d483; margin-right: 7px; }
+
+.main { flex: 1; min-width: 0; padding: 32px 40px 60px; max-width: 1500px; }
+.topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 30px; }
+h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.02em; }
+.topbar p, .panel-header p { margin: 0; color: var(--muted); font-size: 13px; }
+
+.refresh-btn, .secondary-btn {
+    border: 1px solid var(--border); background: var(--panel);
+    color: var(--text); padding: 9px 13px; border-radius: 8px;
+}
+.refresh-btn:hover, .secondary-btn:hover { background: var(--panel-2); }
+
+.section { display: none; }
+.section.active { display: block; }
+
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
+.card, .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 13px; }
+.card { padding: 20px; }
+.card-label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 10px; }
+.card strong { font-size: 23px; }
+
+.panel { padding: 22px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.panel-header h2 { margin: 0 0 5px; font-size: 17px; }
+
+.primary-btn {
+    border: 0; background: var(--accent); color: white;
+    padding: 9px 14px; border-radius: 8px; font-weight: 650;
+}
+.primary-btn:hover { background: var(--accent-2); }
+
+.commit-info { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.commit-info a { color: var(--accent-2); text-decoration: none; }
+.commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+
+.search-row { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+.search-row input, .modal-card input {
+    width: 100%; border: 1px solid var(--border); background: #0c0f14;
+    color: var(--text); border-radius: 8px; padding: 10px 12px; outline: none;
+}
+.search-row input:focus, .modal-card input:focus { border-color: #5d6878; }
+.search-row input { max-width: 420px; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.users-list { display: grid; gap: 7px; }
+.user-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 15px; padding: 12px 13px; border: 1px solid var(--border);
+    border-radius: 9px; background: #0e1218;
+}
+.user-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.remove-btn { border: 0; background: transparent; color: var(--danger); padding: 7px 9px; border-radius: 7px; }
+.remove-btn:hover { background: rgba(255, 77, 95, .09); }
+
+.editor-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.editor-bar { background: #0c1016; border-bottom: 1px solid var(--border); padding: 9px 12px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+#script-editor {
+    display: block; width: 100%; min-height: 680px; resize: vertical;
+    border: 0; outline: 0; padding: 18px;
+    background: #080b10; color: #e7ebf0;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    tab-size: 4;
+}
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: grid; place-items: center; padding: 20px; z-index: 10; }
+.modal.hidden { display: none; }
+.modal-card { width: min(430px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: 13px; padding: 23px; position: relative; box-shadow: 0 25px 80px rgba(0,0,0,.4); }
+.modal-card h2 { margin: 0 0 7px; }
+.modal-card p { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+.modal-close { position: absolute; right: 13px; top: 10px; background: transparent; border: 0; color: var(--muted); font-size: 24px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 14px; }
+
+#toast-container { position: fixed; right: 20px; bottom: 20px; display: grid; gap: 9px; z-index: 20; }
+.toast { background: #151b24; border: 1px solid var(--border); color: var(--text); padding: 11px 14px; border-radius: 9px; box-shadow: 0 10px 35px rgba(0,0,0,.3); font-size: 13px; }
+.toast.error { border-color: rgba(255,77,95,.45); }
+
+@media (max-width: 850px) {
+    .sidebar { width: 70px; padding: 18px 10px; }
+    .brand div:not(.brand-mark), .nav-item:not(.active) span + * { display: none; }
+    .brand { padding-left: 6px; }
+    .nav-item { justify-content: center; }
+    .sidebar-footer { display: none; }
+    .main { padding: 25px 18px 45px; }
+    .cards { grid-template-columns: 1fr; }
+}
