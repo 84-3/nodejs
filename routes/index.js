@@ -3,8 +3,6 @@ const path = require("path");
 
 const router = express.Router();
 
-const DASHBOARD_USER = "admin";
-
 function requireDashboardAuth(req, res, next) {
     const header = req.headers.authorization || "";
 
@@ -25,7 +23,7 @@ function requireDashboardAuth(req, res, next) {
     const password = separator >= 0 ? credentials.slice(separator + 1) : "";
 
     if (
-        username !== DASHBOARD_USER ||
+        username !== process.env.DASHBOARD_USER ||
         !process.env.DASHBOARD_PASSWORD ||
         password !== process.env.DASHBOARD_PASSWORD
     ) {
