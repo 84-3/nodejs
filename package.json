@@ -1,12 +1,13 @@
 {
-  "name": "nodejs-app",
+  "name": "sfxdarei-railway-manager",
   "version": "1.0.0",
-  "description": "A minimal Node.js web application.",
+  "description": "SFXDarei Roblox script distribution and management dashboard.",
   "main": "app.js",
   "author": "alphasec",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "octokit": "^5.0.5"
   },
   "scripts": {
     "start": "node app.js"
