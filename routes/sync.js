@@ -14,7 +14,10 @@ const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || "";
 
 let db = null;
 let initPromise = null;
-let allowedCache = { expiresAt: 0, users: new Set() };
+let allowedCache = {
+    expiresAt: 0,
+    users: new Set()
+};
 
 function normalizeUsername(value) {
     return String(value || "").trim().toLowerCase();
@@ -44,7 +47,7 @@ async function initDatabase() {
                 CREATE TABLE IF NOT EXISTS user_states (
                     username TEXT PRIMARY KEY,
                     score_effects TEXT NOT NULL DEFAULT '{}',
-                    last_score_effect TEXT,
+                    next_score_effect TEXT,
                     level TEXT,
                     nametag TEXT,
                     player_card TEXT,
@@ -53,6 +56,22 @@ async function initDatabase() {
                     last_seen INTEGER NOT NULL
                 )
             `);
+
+            // Upgrade older installations that may already have user_states
+            // without the new next_score_effect column.
+            try {
+                await client.execute(`
+                    ALTER TABLE user_states
+                    ADD COLUMN next_score_effect TEXT
+                `);
+            } catch (error) {
+                const message = String(error?.message || error);
+
+                // Ignore the expected "already exists" case.
+                if (!/duplicate column|already exists/i.test(message)) {
+                    throw error;
+                }
+            }
 
             await client.execute(`
                 CREATE TABLE IF NOT EXISTS sync_events (
@@ -84,14 +103,23 @@ async function initDatabase() {
 
 async function getAuthorizedUsers() {
     const now = Date.now();
+
     if (allowedCache.expiresAt > now) {
         return allowedCache.users;
     }
 
     const file = await getFile(USERS_PATH);
+
     const data = JSON.parse(file.content);
-    const users = Array.isArray(data.users) ? data.users : [];
-    const normalized = new Set(users.map(normalizeUsername).filter(Boolean));
+    const users = Array.isArray(data.users)
+        ? data.users
+        : [];
+
+    const normalized = new Set(
+        users
+            .map(normalizeUsername)
+            .filter(Boolean)
+    );
 
     allowedCache = {
         expiresAt: now + AUTH_CACHE_MS,
@@ -108,18 +136,28 @@ async function requireAuthorized(req, res, next) {
         );
 
         if (!username) {
-            return res.status(400).json({ error: "Username is required." });
+            return res.status(400).json({
+                error: "Username is required."
+            });
         }
 
         const users = await getAuthorizedUsers();
+
         if (!users.has(username)) {
-            return res.status(403).json({ error: "User is not authorized." });
+            return res.status(403).json({
+                error: "User is not authorized."
+            });
         }
 
         req.syncUsername = username;
+
         return next();
     } catch (error) {
-        console.error("[Sync] Authorization check failed:", error);
+        console.error(
+            "[Sync] Authorization check failed:",
+            error
+        );
+
         return res.status(503).json({
             error: "Synchronization service unavailable."
         });
@@ -127,13 +165,19 @@ async function requireAuthorized(req, res, next) {
 }
 
 function sanitizeEffects(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value)
+    ) {
         return {};
     }
 
     const output = {};
+
     for (const [name, weight] of Object.entries(value)) {
         const numeric = Number(weight);
+
         if (
             typeof name === "string" &&
             name.length > 0 &&
@@ -149,11 +193,16 @@ function sanitizeEffects(value) {
 }
 
 function sanitizeString(value, maxLength = 100) {
-    if (value === null || value === undefined || value === "") {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
         return null;
     }
 
     const text = String(value);
+
     if (text.length > maxLength) {
         throw new Error("Value is too long.");
     }
@@ -170,26 +219,35 @@ function sanitizeUpdate(type, value) {
         type === "level" ||
         type === "nametag" ||
         type === "playerCard" ||
-        type === "jersey"
+        type === "jersey" ||
+        type === "nextScoreEffect"
     ) {
-        return sanitizeString(value);
-    }
-
-    if (type === "scoreEffect") {
         const text = sanitizeString(value);
-        if (!text) {
-            throw new Error("Invalid score effect.");
+
+        if (
+            type === "nextScoreEffect" &&
+            !text
+        ) {
+            throw new Error(
+                "Invalid next score effect."
+            );
         }
+
         return text;
     }
 
-    throw new Error("Unsupported sync type.");
+    throw new Error(
+        "Unsupported sync type."
+    );
 }
 
 function decodeState(row) {
     let scoreEffects = {};
+
     try {
-        scoreEffects = JSON.parse(row.score_effects || "{}");
+        scoreEffects = JSON.parse(
+            row.score_effects || "{}"
+        );
     } catch {
         scoreEffects = {};
     }
@@ -197,7 +255,7 @@ function decodeState(row) {
     return {
         username: row.username,
         scoreEffects: sanitizeEffects(scoreEffects),
-        scoreEffect: row.last_score_effect || null,
+        nextScoreEffect: row.next_score_effect || null,
         level: row.level || null,
         nametag: row.nametag || null,
         playerCard: row.player_card || null,
@@ -209,6 +267,7 @@ function decodeState(row) {
 
 function encodeEvent(row) {
     let value = row.value;
+
     if (row.type === "scoreEffects") {
         try {
             value = JSON.parse(value || "{}");
@@ -227,218 +286,420 @@ function encodeEvent(row) {
 }
 
 async function cleanupOldEvents() {
-    const cutoff = Date.now() - EVENT_RETENTION_MS;
+    const cutoff =
+        Date.now() - EVENT_RETENTION_MS;
+
     try {
         await getDatabase().execute({
-            sql: "DELETE FROM sync_events WHERE created_at < ?",
+            sql: `
+                DELETE FROM sync_events
+                WHERE created_at < ?
+            `,
             args: [cutoff]
         });
     } catch (error) {
-        console.warn("[Sync] Event cleanup failed:", error.message);
+        console.warn(
+            "[Sync] Event cleanup failed:",
+            error.message
+        );
     }
 }
 
-router.get("/state", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
-        const authorizedUsers = await getAuthorizedUsers();
-        const result = await getDatabase().execute(`
-            SELECT username, score_effects, last_score_effect,
-                   level, nametag, player_card, jersey,
-                   updated_at, last_seen
-            FROM user_states
-        `);
+router.get(
+    "/state",
+    requireAuthorized,
+    async (req, res) => {
+        try {
+            await initDatabase();
 
-        const states = result.rows
-            .filter(row => authorizedUsers.has(normalizeUsername(row.username)))
-            .map(decodeState);
+            const authorizedUsers =
+                await getAuthorizedUsers();
 
-        const cursorResult = await getDatabase().execute(`
-            SELECT id FROM sync_events ORDER BY id DESC LIMIT 1
-        `);
+            const result =
+                await getDatabase().execute(`
+                    SELECT
+                        username,
+                        score_effects,
+                        next_score_effect,
+                        level,
+                        nametag,
+                        player_card,
+                        jersey,
+                        updated_at,
+                        last_seen
+                    FROM user_states
+                `);
 
-        const cursor = cursorResult.rows.length
-            ? String(cursorResult.rows[0].id)
-            : null;
+            const states = result.rows
+                .filter(row =>
+                    authorizedUsers.has(
+                        normalizeUsername(row.username)
+                    )
+                )
+                .map(decodeState);
 
-        return res.json({ states, cursor });
-    } catch (error) {
-        console.error("[Sync] GET state:", error);
-        return res.status(503).json({
-            error: "Synchronization service unavailable."
-        });
-    }
-});
+            const cursorResult =
+                await getDatabase().execute(`
+                    SELECT id
+                    FROM sync_events
+                    ORDER BY id DESC
+                    LIMIT 1
+                `);
 
-router.get("/changes", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
-        const authorizedUsers = await getAuthorizedUsers();
-        const after = Number.parseInt(String(req.query.after || "0"), 10) || 0;
+            const cursor =
+                cursorResult.rows.length
+                    ? String(
+                        cursorResult.rows[0].id
+                    )
+                    : null;
 
-        const result = await getDatabase().execute({
-            sql: `
-                SELECT id, username, type, value, created_at
-                FROM sync_events
-                WHERE id > ?
-                ORDER BY id ASC
-                LIMIT ?
-            `,
-            args: [after, POLL_LIMIT]
-        });
+            return res.json({
+                states,
+                cursor
+            });
+        } catch (error) {
+            console.error(
+                "[Sync] GET state:",
+                error
+            );
 
-        const events = result.rows
-            .filter(row => authorizedUsers.has(normalizeUsername(row.username)))
-            .map(encodeEvent);
-
-        const newestId = result.rows.length
-            ? String(result.rows[result.rows.length - 1].id)
-            : String(after);
-
-        return res.json({ events, cursor: newestId });
-    } catch (error) {
-        console.error("[Sync] GET changes:", error);
-        return res.status(503).json({
-            error: "Synchronization service unavailable."
-        });
-    }
-});
-
-router.post("/update", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
-
-        const type = String(req.body?.type || "").trim();
-        const value = sanitizeUpdate(type, req.body?.value);
-        const username = req.syncUsername;
-        const now = Date.now();
-        const client = getDatabase();
-
-        const stateResult = await client.execute({
-            sql: `
-                SELECT score_effects, last_score_effect, level,
-                       nametag, player_card, jersey
-                FROM user_states
-                WHERE username = ?
-                LIMIT 1
-            `,
-            args: [username]
-        });
-
-        let scoreEffects = {};
-        let lastScoreEffect = null;
-        let level = null;
-        let nametag = null;
-        let playerCard = null;
-        let jersey = null;
-
-        if (stateResult.rows.length) {
-            const row = stateResult.rows[0];
-            try {
-                scoreEffects = JSON.parse(row.score_effects || "{}");
-            } catch {}
-            lastScoreEffect = row.last_score_effect || null;
-            level = row.level || null;
-            nametag = row.nametag || null;
-            playerCard = row.player_card || null;
-            jersey = row.jersey || null;
+            return res.status(503).json({
+                error:
+                    "Synchronization service unavailable."
+            });
         }
+    }
+);
 
-        scoreEffects = sanitizeEffects(scoreEffects);
+router.get(
+    "/changes",
+    requireAuthorized,
+    async (req, res) => {
+        try {
+            await initDatabase();
 
-        if (type === "scoreEffects") {
-            scoreEffects = value;
-        } else if (type === "scoreEffect") {
-            lastScoreEffect = value;
-        } else if (type === "level") {
-            level = value;
-        } else if (type === "nametag") {
-            nametag = value;
-        } else if (type === "playerCard") {
-            playerCard = value;
-        } else if (type === "jersey") {
-            jersey = value;
+            const authorizedUsers =
+                await getAuthorizedUsers();
+
+            const after =
+                Number.parseInt(
+                    String(
+                        req.query.after || "0"
+                    ),
+                    10
+                ) || 0;
+
+            const result =
+                await getDatabase().execute({
+                    sql: `
+                        SELECT
+                            id,
+                            username,
+                            type,
+                            value,
+                            created_at
+                        FROM sync_events
+                        WHERE id > ?
+                        ORDER BY id ASC
+                        LIMIT ?
+                    `,
+                    args: [
+                        after,
+                        POLL_LIMIT
+                    ]
+                });
+
+            const events = result.rows
+                .filter(row =>
+                    authorizedUsers.has(
+                        normalizeUsername(row.username)
+                    )
+                )
+                .map(encodeEvent);
+
+            const newestId =
+                result.rows.length
+                    ? String(
+                        result.rows[
+                            result.rows.length - 1
+                        ].id
+                    )
+                    : String(after);
+
+            return res.json({
+                events,
+                cursor: newestId
+            });
+        } catch (error) {
+            console.error(
+                "[Sync] GET changes:",
+                error
+            );
+
+            return res.status(503).json({
+                error:
+                    "Synchronization service unavailable."
+            });
         }
+    }
+);
 
-        await client.execute({
-            sql: `
-                INSERT INTO user_states (
-                    username, score_effects, last_score_effect,
-                    level, nametag, player_card, jersey,
-                    updated_at, last_seen
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(username) DO UPDATE SET
-                    score_effects = excluded.score_effects,
-                    last_score_effect = excluded.last_score_effect,
-                    level = excluded.level,
-                    nametag = excluded.nametag,
-                    player_card = excluded.player_card,
-                    jersey = excluded.jersey,
-                    updated_at = excluded.updated_at,
-                    last_seen = excluded.last_seen
-            `,
-            args: [
-                username,
-                JSON.stringify(scoreEffects),
-                lastScoreEffect,
-                level,
-                nametag,
-                playerCard,
-                jersey,
-                now,
-                now
-            ]
-        });
+router.post(
+    "/update",
+    requireAuthorized,
+    async (req, res) => {
+        try {
+            await initDatabase();
 
-        await client.execute({
-            sql: `
-                INSERT INTO sync_events (username, type, value, created_at)
-                VALUES (?, ?, ?, ?)
-            `,
-            args: [
-                username,
+            const type = String(
+                req.body?.type || ""
+            ).trim();
+
+            const value = sanitizeUpdate(
                 type,
-                type === "scoreEffects" ? JSON.stringify(value) : value,
-                now
-            ]
-        });
+                req.body?.value
+            );
 
-        if (Math.random() < 0.03) {
-            void cleanupOldEvents();
+            const username = req.syncUsername;
+            const now = Date.now();
+            const client = getDatabase();
+
+            const stateResult =
+                await client.execute({
+                    sql: `
+                        SELECT
+                            score_effects,
+                            next_score_effect,
+                            level,
+                            nametag,
+                            player_card,
+                            jersey
+                        FROM user_states
+                        WHERE username = ?
+                        LIMIT 1
+                    `,
+                    args: [username]
+                });
+
+            let scoreEffects = {};
+            let nextScoreEffect = null;
+            let level = null;
+            let nametag = null;
+            let playerCard = null;
+            let jersey = null;
+
+            if (stateResult.rows.length) {
+                const row =
+                    stateResult.rows[0];
+
+                try {
+                    scoreEffects =
+                        JSON.parse(
+                            row.score_effects ||
+                            "{}"
+                        );
+                } catch {
+                    scoreEffects = {};
+                }
+
+                nextScoreEffect =
+                    row.next_score_effect ||
+                    null;
+
+                level =
+                    row.level ||
+                    null;
+
+                nametag =
+                    row.nametag ||
+                    null;
+
+                playerCard =
+                    row.player_card ||
+                    null;
+
+                jersey =
+                    row.jersey ||
+                    null;
+            }
+
+            scoreEffects =
+                sanitizeEffects(scoreEffects);
+
+            if (type === "scoreEffects") {
+                scoreEffects = value;
+            } else if (
+                type === "nextScoreEffect"
+            ) {
+                nextScoreEffect = value;
+            } else if (type === "level") {
+                level = value;
+            } else if (
+                type === "nametag"
+            ) {
+                nametag = value;
+            } else if (
+                type === "playerCard"
+            ) {
+                playerCard = value;
+            } else if (
+                type === "jersey"
+            ) {
+                jersey = value;
+            }
+
+            await client.execute({
+                sql: `
+                    INSERT INTO user_states (
+                        username,
+                        score_effects,
+                        next_score_effect,
+                        level,
+                        nametag,
+                        player_card,
+                        jersey,
+                        updated_at,
+                        last_seen
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+                    ON CONFLICT(username)
+                    DO UPDATE SET
+                        score_effects =
+                            excluded.score_effects,
+
+                        next_score_effect =
+                            excluded.next_score_effect,
+
+                        level =
+                            excluded.level,
+
+                        nametag =
+                            excluded.nametag,
+
+                        player_card =
+                            excluded.player_card,
+
+                        jersey =
+                            excluded.jersey,
+
+                        updated_at =
+                            excluded.updated_at,
+
+                        last_seen =
+                            excluded.last_seen
+                `,
+                args: [
+                    username,
+                    JSON.stringify(
+                        scoreEffects
+                    ),
+                    nextScoreEffect,
+                    level,
+                    nametag,
+                    playerCard,
+                    jersey,
+                    now,
+                    now
+                ]
+            });
+
+            await client.execute({
+                sql: `
+                    INSERT INTO sync_events (
+                        username,
+                        type,
+                        value,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                `,
+                args: [
+                    username,
+                    type,
+                    type === "scoreEffects"
+                        ? JSON.stringify(value)
+                        : value,
+                    now
+                ]
+            });
+
+            if (Math.random() < 0.03) {
+                void cleanupOldEvents();
+            }
+
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            console.error(
+                "[Sync] POST update:",
+                error
+            );
+
+            return res.status(400).json({
+                error:
+                    error.message ||
+                    "Failed to synchronize update."
+            });
         }
-
-        return res.json({ success: true });
-    } catch (error) {
-        console.error("[Sync] POST update:", error);
-        return res.status(400).json({
-            error: error.message || "Failed to synchronize update."
-        });
     }
-});
+);
 
-router.post("/heartbeat", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
-        const now = Date.now();
+router.post(
+    "/heartbeat",
+    requireAuthorized,
+    async (req, res) => {
+        try {
+            await initDatabase();
 
-        await getDatabase().execute({
-            sql: `
-                INSERT INTO user_states (
-                    username, score_effects, updated_at, last_seen
-                ) VALUES (?, '{}', ?, ?)
-                ON CONFLICT(username) DO UPDATE SET
-                    last_seen = excluded.last_seen
-            `,
-            args: [req.syncUsername, now, now]
-        });
+            const now = Date.now();
+            const client = getDatabase();
 
-        return res.json({ success: true });
-    } catch (error) {
-        console.error("[Sync] POST heartbeat:", error);
-        return res.status(503).json({
-            error: "Synchronization service unavailable."
-        });
+            await client.execute({
+                sql: `
+                    INSERT INTO user_states (
+                        username,
+                        score_effects,
+                        next_score_effect,
+                        updated_at,
+                        last_seen
+                    )
+                    VALUES (
+                        ?,
+                        '{}',
+                        NULL,
+                        ?,
+                        ?
+                    )
+
+                    ON CONFLICT(username)
+                    DO UPDATE SET
+                        last_seen =
+                            excluded.last_seen
+                `,
+                args: [
+                    req.syncUsername,
+                    now,
+                    now
+                ]
+            });
+
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            console.error(
+                "[Sync] POST heartbeat:",
+                error
+            );
+
+            return res.status(503).json({
+                error:
+                    "Synchronization service unavailable."
+            });
+        }
     }
-});
+);
 
 module.exports = router;
