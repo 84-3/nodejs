@@ -139,10 +139,6 @@ router.put("/script", async (req, res) => {
         return res.status(400).json({ error: "Script content is required." });
     }
 
-    if (content.length > 1000000) {
-        return res.status(413).json({ error: "Script is too large." });
-    }
-
     try {
         const file = await getFile(SCRIPT_PATH);
 
