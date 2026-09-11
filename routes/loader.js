@@ -1,6 +1,4 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 
 const { getFile } = require("../github");
 
@@ -29,8 +27,10 @@ router.get("/loader", async (req, res) => {
     }
 });
 
-router.get("/authorize", (req, res) => {
-    const requestedUsername = String(req.query.username || "").trim().toLowerCase();
+router.get("/authorize", async (req, res) => {
+    const requestedUsername = String(
+        req.query.username || ""
+    ).trim().toLowerCase();
 
     if (!requestedUsername) {
         return res.status(400).json({
@@ -40,17 +40,28 @@ router.get("/authorize", (req, res) => {
     }
 
     try {
-        const usersPath = path.join(__dirname, "../data/users.json");
-        const data = JSON.parse(fs.readFileSync(usersPath, "utf8"));
+        // Always fetch the latest users.json directly from GitHub.
+        const file = await getFile("data/users.json");
+
+        const data = JSON.parse(file.content);
         const users = Array.isArray(data.users) ? data.users : [];
 
         const authorized = users.some(
-            username => String(username).trim().toLowerCase() === requestedUsername
+            username =>
+                String(username).trim().toLowerCase() === requestedUsername
         );
+
+        res.set(
+            "Cache-Control",
+            "no-store, no-cache, must-revalidate, proxy-revalidate"
+        );
+        res.set("Pragma", "no-cache");
+        res.set("Expires", "0");
 
         return res.json({ authorized });
     } catch (error) {
-        console.error("[Authorize] Failed to read users:", error);
+        console.error("[Authorize] Failed to fetch users:", error);
+
         return res.status(500).json({
             authorized: false,
             error: "Authorization service unavailable."
