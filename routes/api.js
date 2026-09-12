@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const { createClient } = require("@libsql/client");
 
 const {
     getFile,
@@ -12,6 +13,26 @@ const router = express.Router();
 
 const USERS_PATH = "data/users.json";
 const SCRIPT_PATH = "script/script.lua";
+
+const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL || "";
+const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || "";
+
+let analyticsDb = null;
+
+function getAnalyticsDatabase() {
+    if (!TURSO_DATABASE_URL) {
+        throw new Error("TURSO_DATABASE_URL is not configured.");
+    }
+
+    if (!analyticsDb) {
+        analyticsDb = createClient({
+            url: TURSO_DATABASE_URL,
+            authToken: TURSO_AUTH_TOKEN || undefined
+        });
+    }
+
+    return analyticsDb;
+}
 
 function requireDashboardAuth(req, res, next) {
     if (req.session && req.session.authenticated) return next();
@@ -187,6 +208,198 @@ router.get("/status", async (req, res) => {
     } catch (error) {
         console.error("[API] GET status:", error);
         res.status(500).json({ error: "Failed to read GitHub status." });
+    }
+});
+
+router.post("/execution", requireAuthorized, async (req, res) => {
+    try {
+        await initDatabase();
+
+        const executor = sanitizeString(req.body?.executor, 100);
+        const device = sanitizeString(req.body?.device, 50);
+
+        if (!executor || !device) {
+            return res.status(400).json({
+                error: "Executor and device are required."
+            });
+        }
+
+        await getDatabase().execute({
+            sql: `
+                INSERT INTO execution_events (
+                    username,
+                    executor,
+                    device,
+                    executed_at
+                )
+                VALUES (?, ?, ?, ?)
+            `,
+            args: [
+                req.syncUsername,
+                executor,
+                device,
+                Date.now()
+            ]
+        });
+
+        return res.json({ success: true });
+    } catch (error) {
+        console.error("[Sync] POST execution:", error);
+
+        return res.status(503).json({
+            error: "Failed to record execution."
+        });
+    }
+});
+
+async function ensureAnalyticsTable() {
+    const db = getAnalyticsDatabase();
+
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS execution_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            executor TEXT NOT NULL,
+            device TEXT NOT NULL,
+            executed_at INTEGER NOT NULL
+        )
+    `);
+
+    await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_execution_events_username
+        ON execution_events(username, executed_at DESC)
+    `);
+
+    await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_execution_events_time
+        ON execution_events(executed_at DESC)
+    `);
+}
+
+router.get("/analytics", async (req, res) => {
+    try {
+        await ensureAnalyticsTable();
+
+        const usersFile = await getFile(USERS_PATH);
+        const authorizedUsers = parseUsers(usersFile.content);
+
+        const result = await getAnalyticsDatabase().execute(`
+            SELECT
+                username,
+                executor,
+                device,
+                executed_at
+            FROM execution_events
+            ORDER BY executed_at DESC
+        `);
+
+        const authorizedSet = new Set(
+            authorizedUsers.map(username =>
+                String(username).trim().toLowerCase()
+            )
+        );
+
+        const executions = result.rows
+            .filter(row =>
+                authorizedSet.has(String(row.username).trim().toLowerCase())
+            )
+            .map(row => ({
+                username: String(row.username),
+                executor: String(row.executor),
+                device: String(row.device),
+                executedAt: Number(row.executed_at)
+            }));
+
+        const executorCounts = {};
+        const deviceCounts = {};
+        const userCounts = {};
+
+        for (const execution of executions) {
+            executorCounts[execution.executor] =
+                (executorCounts[execution.executor] || 0) + 1;
+
+            deviceCounts[execution.device] =
+                (deviceCounts[execution.device] || 0) + 1;
+
+            const key = execution.username.toLowerCase();
+
+            userCounts[key] = (userCounts[key] || 0) + 1;
+        }
+
+        const users = authorizedUsers.map(username => ({
+            username,
+            executions: userCounts[String(username).toLowerCase()] || 0
+        }));
+
+        return res.json({
+            totalExecutions: executions.length,
+            executors: Object.entries(executorCounts)
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count),
+            devices: Object.entries(deviceCounts)
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count),
+            users
+        });
+    } catch (error) {
+        console.error("[API] GET analytics:", error);
+
+        return res.status(500).json({
+            error: "Failed to load analytics."
+        });
+    }
+});
+
+router.get("/analytics/:username", async (req, res) => {
+    try {
+        await ensureAnalyticsTable();
+
+        const requestedUsername = String(
+            req.params.username || ""
+        ).trim();
+
+        const usersFile = await getFile(USERS_PATH);
+        const authorizedUsers = parseUsers(usersFile.content);
+
+        const authorizedUsername = authorizedUsers.find(
+            username =>
+                String(username).trim().toLowerCase() ===
+                requestedUsername.toLowerCase()
+        );
+
+        if (!authorizedUsername) {
+            return res.status(404).json({
+                error: "Authorized user not found."
+            });
+        }
+
+        const result = await getAnalyticsDatabase().execute({
+            sql: `
+                SELECT
+                    executor,
+                    device,
+                    executed_at
+                FROM execution_events
+                WHERE LOWER(username) = LOWER(?)
+                ORDER BY executed_at DESC
+            `,
+            args: [authorizedUsername]
+        });
+
+        return res.json({
+            username: authorizedUsername,
+            executions: result.rows.map(row => ({
+                executor: String(row.executor),
+                device: String(row.device),
+                executedAt: Number(row.executed_at)
+            }))
+        });
+    } catch (error) {
+        console.error("[API] GET user analytics:", error);
+
+        return res.status(500).json({
+            error: "Failed to load user execution history."
+        });
     }
 });
 
