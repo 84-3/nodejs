@@ -92,6 +92,26 @@ async function initDatabase() {
                 CREATE INDEX IF NOT EXISTS idx_sync_events_username
                 ON sync_events(username, id)
             `);
+
+            await client.execute(`
+                CREATE TABLE IF NOT EXISTS execution_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    executor TEXT NOT NULL,
+                    device TEXT NOT NULL,
+                    executed_at INTEGER NOT NULL
+                )
+            `);
+            
+            await client.execute(`
+                CREATE INDEX IF NOT EXISTS idx_execution_events_username
+                ON execution_events(username, executed_at DESC)
+            `);
+            
+            await client.execute(`
+                CREATE INDEX IF NOT EXISTS idx_execution_events_time
+                ON execution_events(executed_at DESC)
+            `);
         })().catch(error => {
             initPromise = null;
             throw error;
