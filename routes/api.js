@@ -211,47 +211,6 @@ router.get("/status", async (req, res) => {
     }
 });
 
-router.post("/execution", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
-
-        const executor = sanitizeString(req.body?.executor, 100);
-        const device = sanitizeString(req.body?.device, 50);
-
-        if (!executor || !device) {
-            return res.status(400).json({
-                error: "Executor and device are required."
-            });
-        }
-
-        await getDatabase().execute({
-            sql: `
-                INSERT INTO execution_events (
-                    username,
-                    executor,
-                    device,
-                    executed_at
-                )
-                VALUES (?, ?, ?, ?)
-            `,
-            args: [
-                req.syncUsername,
-                executor,
-                device,
-                Date.now()
-            ]
-        });
-
-        return res.json({ success: true });
-    } catch (error) {
-        console.error("[Sync] POST execution:", error);
-
-        return res.status(503).json({
-            error: "Failed to record execution."
-        });
-    }
-});
-
 async function ensureAnalyticsTable() {
     const db = getAnalyticsDatabase();
 
