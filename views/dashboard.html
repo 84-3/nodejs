@@ -24,6 +24,9 @@
             <button class="nav-item" data-section="users">
                 <span>◉</span> Users
             </button>
+            <button class="nav-item" data-section="analytics">
+                <span>◔</span> Analytics
+            </button>
             <button class="nav-item" data-section="script">
                 <span>⌘</span> Script
             </button>
@@ -87,6 +90,79 @@
                 </div>
 
                 <div id="users-list" class="users-list">Loading…</div>
+            </div>
+        </section>
+
+        <section id="analytics-section" class="section">
+            <div class="cards">
+                <div class="card">
+                    <span class="card-label">Total executions</span>
+                    <strong id="analytics-total">—</strong>
+                </div>
+                <div class="card">
+                    <span class="card-label">Executors</span>
+                    <strong id="analytics-executor-count">—</strong>
+                </div>
+                <div class="card">
+                    <span class="card-label">Devices</span>
+                    <strong id="analytics-device-count">—</strong>
+                </div>
+            </div>
+        
+            <div class="analytics-grid">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Executors</h2>
+                            <p>Which executors are being used.</p>
+                        </div>
+                    </div>
+        
+                    <div class="chart-area">
+                        <div id="executor-chart" class="pie-chart"></div>
+                        <div id="executor-legend" class="chart-legend"></div>
+                    </div>
+                </div>
+        
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Devices</h2>
+                            <p>Where executions are happening.</p>
+                        </div>
+                    </div>
+        
+                    <div class="chart-area">
+                        <div id="device-chart" class="pie-chart"></div>
+                        <div id="device-legend" class="chart-legend"></div>
+                    </div>
+                </div>
+            </div>
+        
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Authorized users</h2>
+                        <p>Click a user to view every recorded execution.</p>
+                    </div>
+                </div>
+        
+                <div id="analytics-users" class="analytics-users">
+                    Loading…
+                </div>
+            </div>
+        
+            <div id="execution-history-panel" class="panel hidden">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="history-title">Execution history</h2>
+                        <p>Every recorded execution for this user.</p>
+                    </div>
+                </div>
+        
+                <div id="execution-history" class="execution-history">
+                    Loading…
+                </div>
             </div>
         </section>
 
