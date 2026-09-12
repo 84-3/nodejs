@@ -1,6 +1,7 @@
 const state = {
     users: [],
-    scriptLoaded: false
+    scriptLoaded: false,
+    analyticsLoaded: false
 };
 
 const $ = selector => document.querySelector(selector);
@@ -47,6 +48,7 @@ function switchSection(section) {
     const titles = {
         dashboard: ["Dashboard", "Manage your script and authorized users."],
         users: ["Users", "Manage who can execute the script."],
+        analytics: ["Analytics", "View script executions, executors and devices."],
         script: ["Script", "Edit the live Roblox script."]
     };
 
@@ -54,6 +56,7 @@ function switchSection(section) {
     $("#page-subtitle").textContent = titles[section][1];
 
     if (section === "users") loadUsers();
+    if (section === "analytics") loadAnalytics();
     if (section === "script") loadScript();
 }
 
@@ -151,6 +154,173 @@ async function addUser() {
     }
 }
 
+const chartColors = [
+    "#4f8cff",
+    "#7c5cff",
+    "#00c48c",
+    "#ffb020",
+    "#ff5c7a",
+    "#19c3ff",
+    "#a66cff",
+    "#ff7a45",
+    "#5cd65c",
+    "#c77dff"
+];
+
+function renderPieChart(chartId, legendId, items) {
+    const chart = document.getElementById(chartId);
+    const legend = document.getElementById(legendId);
+
+    chart.style.background = "#252a35";
+    legend.innerHTML = "";
+
+    if (!items.length) {
+        return;
+    }
+
+    const total = items.reduce((sum, item) => sum + item.count, 0);
+
+    if (!total) {
+        return;
+    }
+
+    let current = 0;
+
+    const segments = items.map((item, index) => {
+        const start = (current / total) * 360;
+        current += item.count;
+        const end = (current / total) * 360;
+        const color = chartColors[index % chartColors.length];
+
+        return `${color} ${start}deg ${end}deg`;
+    });
+
+    chart.style.background = `conic-gradient(${segments.join(", ")})`;
+
+    items.forEach((item, index) => {
+        const color = chartColors[index % chartColors.length];
+
+        const row = document.createElement("div");
+        row.className = "legend-item";
+
+        const dot = document.createElement("span");
+        dot.className = "legend-color";
+        dot.style.background = color;
+
+        const text = document.createElement("span");
+        const percentage = ((item.count / total) * 100).toFixed(1);
+        text.textContent = `${item.name} — ${item.count} (${percentage}%)`;
+
+        row.append(dot, text);
+        legend.appendChild(row);
+    });
+}
+
+async function loadAnalytics() {
+    try {
+        const data = await api("/api/analytics");
+
+        $("#analytics-total").textContent = data.totalExecutions;
+        $("#analytics-executor-count").textContent = data.executors.length;
+        $("#analytics-device-count").textContent = data.devices.length;
+
+        renderPieChart(
+            "executor-chart",
+            "executor-legend",
+            data.executors
+        );
+
+        renderPieChart(
+            "device-chart",
+            "device-legend",
+            data.devices
+        );
+
+        const usersContainer = $("#analytics-users");
+        usersContainer.innerHTML = "";
+
+        if (!data.users.length) {
+            usersContainer.textContent = "No authorized users.";
+        } else {
+            data.users.forEach(user => {
+                const button = document.createElement("button");
+                button.className = "analytics-user";
+
+                const name = document.createElement("span");
+                name.className = "analytics-user-name";
+                name.textContent = user.username;
+
+                const count = document.createElement("span");
+                count.className = "analytics-user-count";
+                count.textContent =
+                    `${user.executions} execution${user.executions === 1 ? "" : "s"}`;
+
+                button.append(name, count);
+
+                button.addEventListener("click", () => {
+                    loadExecutionHistory(user.username);
+                });
+
+                usersContainer.appendChild(button);
+            });
+        }
+
+        state.analyticsLoaded = true;
+    } catch (error) {
+        toast(error.message, true);
+    }
+}
+
+async function loadExecutionHistory(username) {
+    const panel = $("#execution-history-panel");
+    const history = $("#execution-history");
+
+    panel.classList.remove("hidden");
+    $("#history-title").textContent = `${username} — Execution history`;
+    history.textContent = "Loading…";
+
+    try {
+        const data = await api(
+            `/api/analytics/${encodeURIComponent(username)}`
+        );
+
+        history.innerHTML = "";
+
+        if (!data.executions.length) {
+            history.textContent = "This user has no recorded executions.";
+            return;
+        }
+
+        data.executions.forEach(execution => {
+            const row = document.createElement("div");
+            row.className = "execution-row";
+
+            const executor = document.createElement("div");
+            executor.textContent = `Executor: ${execution.executor}`;
+
+            const device = document.createElement("div");
+            device.textContent = `Device: ${execution.device}`;
+
+            const time = document.createElement("div");
+            time.className = "execution-time";
+            time.textContent = new Date(
+                execution.executedAt
+            ).toLocaleString();
+
+            row.append(executor, device, time);
+            history.appendChild(row);
+        });
+
+        panel.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+    } catch (error) {
+        history.textContent = error.message;
+        toast(error.message, true);
+    }
+}
+
 async function loadScript() {
     if (state.scriptLoaded) return;
 
@@ -234,8 +404,14 @@ document.querySelectorAll(".nav-item").forEach(button => {
 
 $("#refresh").addEventListener("click", async () => {
     state.scriptLoaded = false;
+    state.analyticsLoaded = false;
+
     await Promise.all([loadUsers(), loadStatus()]);
-    if ($("#script-section").classList.contains("active")) await loadScript();
+
+    if ($("#script-section").classList.contains("active")) { await loadScript(); }
+
+    if ($("#analytics-section").classList.contains("active")) { await loadAnalytics(); }
+
     toast("Refreshed.");
 });
 
@@ -253,3 +429,6 @@ $("#modal-input").addEventListener("keydown", event => {
 
 loadUsers();
 loadStatus();
+if ($("#analytics-section").classList.contains("active")) {
+    loadAnalytics();
+}
