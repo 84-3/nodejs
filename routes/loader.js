@@ -40,7 +40,6 @@ router.get("/authorize", async (req, res) => {
     }
 
     try {
-        // Always fetch the latest users.json directly from GitHub.
         const file = await getFile("data/users.json");
 
         const data = JSON.parse(file.content);
