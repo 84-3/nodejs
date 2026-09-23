@@ -39,6 +39,14 @@ function requireDashboardAuth(req, res, next) {
     return res.status(401).json({ error: "Authentication required." });
 }
 
+router.get("/healthcheck", (req, res) => {
+    return res.status(200).json({
+        status: "ok",
+        service: "SFXDarei Manager",
+        timestamp: new Date().toISOString()
+    });
+});
+
 router.use(requireDashboardAuth);
 
 function parseUsers(content) {
