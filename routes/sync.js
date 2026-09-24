@@ -14,10 +14,7 @@ const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || "";
 
 let db = null;
 let initPromise = null;
-let allowedCache = {
-    expiresAt: 0,
-    users: new Set()
-};
+let allowedCache = { expiresAt: 0, users: new Set() };
 
 function normalizeUsername(value) {
     return String(value || "").trim().toLowerCase();
@@ -43,6 +40,9 @@ async function initDatabase() {
         initPromise = (async () => {
             const client = getDatabase();
 
+            // next_score_effect is the pre-announced effect that the client
+            // will use for its NEXT score. last_score_effect is intentionally
+            // no longer used by the synchronization system.
             await client.execute(`
                 CREATE TABLE IF NOT EXISTS user_states (
                     username TEXT PRIMARY KEY,
@@ -51,23 +51,33 @@ async function initDatabase() {
                     level TEXT,
                     nametag TEXT,
                     player_card TEXT,
+                    player_cards TEXT NOT NULL DEFAULT '{}',
                     jersey TEXT,
                     updated_at INTEGER NOT NULL,
                     last_seen INTEGER NOT NULL
                 )
             `);
 
-            // Upgrade older installations that may already have user_states
-            // without the new next_score_effect column.
+            // Upgrade an existing installation that still has the old schema.
+            // SQLite/libSQL will fail harmlessly when the column already exists.
             try {
                 await client.execute(`
-                    ALTER TABLE user_states
-                    ADD COLUMN next_score_effect TEXT
+                    ALTER TABLE user_states ADD COLUMN next_score_effect TEXT
                 `);
             } catch (error) {
                 const message = String(error?.message || error);
+                if (!/duplicate column|already exists/i.test(message)) {
+                    throw error;
+                }
+            }
 
-                // Ignore the expected "already exists" case.
+            try {
+                await client.execute(`
+                    ALTER TABLE user_states
+                    ADD COLUMN player_cards TEXT NOT NULL DEFAULT '{}'
+                `);
+            } catch (error) {
+                const message = String(error?.message || error);
                 if (!/duplicate column|already exists/i.test(message)) {
                     throw error;
                 }
@@ -102,12 +112,12 @@ async function initDatabase() {
                     executed_at INTEGER NOT NULL
                 )
             `);
-            
+
             await client.execute(`
                 CREATE INDEX IF NOT EXISTS idx_execution_events_username
                 ON execution_events(username, executed_at DESC)
             `);
-            
+
             await client.execute(`
                 CREATE INDEX IF NOT EXISTS idx_execution_events_time
                 ON execution_events(executed_at DESC)
@@ -129,17 +139,9 @@ async function getAuthorizedUsers() {
     }
 
     const file = await getFile(USERS_PATH);
-
     const data = JSON.parse(file.content);
-    const users = Array.isArray(data.users)
-        ? data.users
-        : [];
-
-    const normalized = new Set(
-        users
-            .map(normalizeUsername)
-            .filter(Boolean)
-    );
+    const users = Array.isArray(data.users) ? data.users : [];
+    const normalized = new Set(users.map(normalizeUsername).filter(Boolean));
 
     allowedCache = {
         expiresAt: now + AUTH_CACHE_MS,
@@ -170,13 +172,9 @@ async function requireAuthorized(req, res, next) {
         }
 
         req.syncUsername = username;
-
         return next();
     } catch (error) {
-        console.error(
-            "[Sync] Authorization check failed:",
-            error
-        );
+        console.error("[Sync] Authorization check failed:", error);
 
         return res.status(503).json({
             error: "Synchronization service unavailable."
@@ -185,11 +183,7 @@ async function requireAuthorized(req, res, next) {
 }
 
 function sanitizeEffects(value) {
-    if (
-        !value ||
-        typeof value !== "object" ||
-        Array.isArray(value)
-    ) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
         return {};
     }
 
@@ -197,6 +191,40 @@ function sanitizeEffects(value) {
 
     for (const [name, weight] of Object.entries(value)) {
         const numeric = Number(weight);
+
+        if (
+            typeof name === "string" &&
+            name.length > 0 &&
+            name.length <= 100 &&
+            Number.isFinite(numeric) &&
+            numeric >= 0
+        ) {
+            output[name] = numeric;
+        }
+    }
+
+    return output;
+}
+
+function sanitizePlayerCards(value) {
+    let source = value;
+
+    if (typeof source === "string") {
+        try {
+            source = JSON.parse(source);
+        } catch {
+            source = {};
+        }
+    }
+
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+        return {};
+    }
+
+    const output = {};
+
+    for (const [name, priority] of Object.entries(source)) {
+        const numeric = Number(priority);
 
         if (
             typeof name === "string" &&
@@ -233,6 +261,16 @@ function sanitizeString(value, maxLength = 100) {
 function sanitizeUpdate(type, value) {
     if (type === "scoreEffects") {
         return sanitizeEffects(value);
+    }
+
+    if (type === "playerCards") {
+        return sanitizePlayerCards(value);
+    }
+
+    // Kept for compatibility with clients that announce the effect
+    // immediately after a score.
+    if (type === "scoreEffect") {
+        return sanitizeString(value);
     }
 
     if (
@@ -272,6 +310,25 @@ function decodeState(row) {
         scoreEffects = {};
     }
 
+    let playerCards = {};
+
+    try {
+        playerCards = JSON.parse(
+            row.player_cards || "{}"
+        );
+    } catch {
+        playerCards = {};
+    }
+
+    // Backward compatibility with the old single-card field.
+    if (
+        Object.keys(playerCards).length === 0 &&
+        typeof row.player_card === "string" &&
+        row.player_card !== ""
+    ) {
+        playerCards[row.player_card] = 100;
+    }
+
     return {
         username: row.username,
         scoreEffects: sanitizeEffects(scoreEffects),
@@ -279,6 +336,7 @@ function decodeState(row) {
         level: row.level || null,
         nametag: row.nametag || null,
         playerCard: row.player_card || null,
+        playerCards: sanitizePlayerCards(playerCards),
         jersey: row.jersey || null,
         updatedAt: row.updated_at,
         lastSeen: row.last_seen
@@ -288,9 +346,14 @@ function decodeState(row) {
 function encodeEvent(row) {
     let value = row.value;
 
-    if (row.type === "scoreEffects") {
+    if (
+        row.type === "scoreEffects" ||
+        row.type === "playerCards"
+    ) {
         try {
-            value = JSON.parse(value || "{}");
+            value = JSON.parse(
+                value || "{}"
+            );
         } catch {
             value = {};
         }
@@ -344,6 +407,7 @@ router.get(
                         level,
                         nametag,
                         player_card,
+                        player_cards,
                         jersey,
                         updated_at,
                         last_seen
@@ -480,9 +544,14 @@ router.post(
                 req.body?.value
             );
 
-            const username = req.syncUsername;
-            const now = Date.now();
-            const client = getDatabase();
+            const username =
+                req.syncUsername;
+
+            const now =
+                Date.now();
+
+            const client =
+                getDatabase();
 
             const stateResult =
                 await client.execute({
@@ -493,6 +562,7 @@ router.post(
                             level,
                             nametag,
                             player_card,
+                            player_cards,
                             jersey
                         FROM user_states
                         WHERE username = ?
@@ -506,9 +576,12 @@ router.post(
             let level = null;
             let nametag = null;
             let playerCard = null;
+            let playerCards = {};
             let jersey = null;
 
-            if (stateResult.rows.length) {
+            if (
+                stateResult.rows.length
+            ) {
                 const row =
                     stateResult.rows[0];
 
@@ -538,30 +611,96 @@ router.post(
                     row.player_card ||
                     null;
 
+                try {
+                    playerCards =
+                        JSON.parse(
+                            row.player_cards ||
+                            "{}"
+                        );
+                } catch {
+                    playerCards = {};
+                }
+
+                playerCards =
+                    sanitizePlayerCards(
+                        playerCards
+                    );
+
+                // Migrate legacy single-card data.
+                if (
+                    Object.keys(
+                        playerCards
+                    ).length === 0 &&
+                    typeof playerCard === "string" &&
+                    playerCard !== ""
+                ) {
+                    playerCards[
+                        playerCard
+                    ] = 100;
+                }
+
                 jersey =
                     row.jersey ||
                     null;
             }
 
             scoreEffects =
-                sanitizeEffects(scoreEffects);
+                sanitizeEffects(
+                    scoreEffects
+                );
 
-            if (type === "scoreEffects") {
+            if (
+                type === "scoreEffects"
+            ) {
                 scoreEffects = value;
+
             } else if (
                 type === "nextScoreEffect"
             ) {
                 nextScoreEffect = value;
-            } else if (type === "level") {
+
+            } else if (
+                type === "level"
+            ) {
                 level = value;
+
             } else if (
                 type === "nametag"
             ) {
                 nametag = value;
+
             } else if (
                 type === "playerCard"
             ) {
                 playerCard = value;
+
+                // Keep the multi-card pool authoritative.
+                // Legacy single-card updates only create a pool
+                // when no multi-card state exists.
+                if (
+                    Object.keys(
+                        playerCards
+                    ).length === 0
+                ) {
+                    playerCards =
+                        value
+                            ? { [value]: 100 }
+                            : {};
+                }
+
+            } else if (
+                type === "playerCards"
+            ) {
+                playerCards = value;
+
+                const cardNames =
+                    Object.keys(value);
+
+                playerCard =
+                    cardNames.length > 0
+                        ? cardNames[0]
+                        : null;
+
             } else if (
                 type === "jersey"
             ) {
@@ -577,11 +716,14 @@ router.post(
                         level,
                         nametag,
                         player_card,
+                        player_cards,
                         jersey,
                         updated_at,
                         last_seen
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
 
                     ON CONFLICT(username)
                     DO UPDATE SET
@@ -599,6 +741,9 @@ router.post(
 
                         player_card =
                             excluded.player_card,
+
+                        player_cards =
+                            excluded.player_cards,
 
                         jersey =
                             excluded.jersey,
@@ -618,6 +763,9 @@ router.post(
                     level,
                     nametag,
                     playerCard,
+                    JSON.stringify(
+                        playerCards
+                    ),
                     jersey,
                     now,
                     now
@@ -637,14 +785,19 @@ router.post(
                 args: [
                     username,
                     type,
-                    type === "scoreEffects"
+                    (
+                        type === "scoreEffects" ||
+                        type === "playerCards"
+                    )
                         ? JSON.stringify(value)
                         : value,
                     now
                 ]
             });
 
-            if (Math.random() < 0.03) {
+            if (
+                Math.random() < 0.03
+            ) {
                 void cleanupOldEvents();
             }
 
@@ -673,8 +826,11 @@ router.post(
         try {
             await initDatabase();
 
-            const now = Date.now();
-            const client = getDatabase();
+            const now =
+                Date.now();
+
+            const client =
+                getDatabase();
 
             await client.execute({
                 sql: `
@@ -722,45 +878,68 @@ router.post(
     }
 );
 
-router.post("/execution", requireAuthorized, async (req, res) => {
-    try {
-        await initDatabase();
+router.post(
+    "/execution",
+    requireAuthorized,
+    async (req, res) => {
+        try {
+            await initDatabase();
 
-        const executor = sanitizeString(req.body?.executor, 100);
-        const device = sanitizeString(req.body?.device, 50);
+            const executor =
+                sanitizeString(
+                    req.body?.executor,
+                    100
+                );
 
-        if (!executor || !device) {
-            return res.status(400).json({
-                error: "Executor and device are required."
-            });
-        }
+            const device =
+                sanitizeString(
+                    req.body?.device,
+                    50
+                );
 
-        await getDatabase().execute({
-            sql: `
-                INSERT INTO execution_events (
-                    username,
+            if (
+                !executor ||
+                !device
+            ) {
+                return res.status(400).json({
+                    error:
+                        "Executor and device are required."
+                });
+            }
+
+            await getDatabase().execute({
+                sql: `
+                    INSERT INTO execution_events (
+                        username,
+                        executor,
+                        device,
+                        executed_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                `,
+                args: [
+                    req.syncUsername,
                     executor,
                     device,
-                    executed_at
-                )
-                VALUES (?, ?, ?, ?)
-            `,
-            args: [
-                req.syncUsername,
-                executor,
-                device,
-                Date.now()
-            ]
-        });
+                    Date.now()
+                ]
+            });
 
-        return res.json({ success: true });
-    } catch (error) {
-        console.error("[Sync] POST execution:", error);
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            console.error(
+                "[Sync] POST execution:",
+                error
+            );
 
-        return res.status(503).json({
-            error: "Failed to record execution."
-        });
+            return res.status(503).json({
+                error:
+                    "Failed to record execution."
+            });
+        }
     }
-});
+);
 
 module.exports = router;
