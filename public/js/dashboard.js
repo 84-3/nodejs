@@ -80,37 +80,47 @@ async function loadUsers() {
     }
 }
 
-function renderUsers() {
-    const query = $("#user-search").value.trim().toLowerCase();
-    const users = state.users.filter(user => user.toLowerCase().includes(query));
 
-    $("#user-total").textContent = `${state.users.length} user${state.users.length === 1 ? "" : "s"}`;
-    $("#user-count").textContent = state.users.length;
+function renderUsers() {
+    const query = ($("#user-search")?.value || "")
+        .trim()
+        .toLowerCase();
+
+    const users = (Array.isArray(state.users) ? state.users : [])
+        .filter(user =>
+            typeof user === "string" &&
+            user.toLowerCase().includes(query)
+        );
+
+    const allUsers = Array.isArray(state.users) ? state.users : [];
+
+    $("#user-total").textContent =
+        `${allUsers.length} user${allUsers.length === 1 ? "" : "s"}`;
+
+    $("#user-count").textContent = allUsers.length;
 
     const list = $("#users-list");
     list.innerHTML = "";
-
     if (!users.length) {
         const empty = document.createElement("div");
         empty.className = "muted";
-        empty.textContent = query ? "No matching users." : "No authorized users yet.";
+        empty.textContent = query
+            ? "No matching users."
+            : "No authorized users yet.";
+
         list.appendChild(empty);
         return;
     }
-
     users.forEach(username => {
         const row = document.createElement("div");
         row.className = "user-row";
-
         const name = document.createElement("span");
         name.className = "user-name";
         name.textContent = username;
-
         const remove = document.createElement("button");
         remove.className = "remove-btn";
         remove.textContent = "Remove";
         remove.addEventListener("click", () => removeUser(username));
-
         row.append(name, remove);
         list.appendChild(row);
     });
@@ -379,19 +389,81 @@ async function saveScript() {
     }
 }
 
+
 async function loadStatus() {
     try {
         const data = await api("/api/status");
-        $("#user-count").textContent = data.localUsers;
+
+        if (Number.isInteger(data.localUsers) && data.localUsers >= 0) {
+            $("#user-count").textContent = data.localUsers;
+        } else {
+            $("#user-count").textContent = "Unavailable";
+        }
+
+        const container = $("#commit-info");
+        container.replaceChildren();
 
         const commit = data.commit;
-        $("#commit-info").innerHTML = `
-            <div><span class="commit-sha">${escapeHtml(commit.sha.slice(0, 12))}</span> — ${escapeHtml(commit.message.split("\n")[0])}</div>
-            <div>${commit.date ? new Date(commit.date).toLocaleString() : "Unknown date"}</div>
-            <div><a href="${escapeAttribute(commit.url)}" target="_blank" rel="noopener">Open commit on GitHub</a></div>
-        `;
+
+        if (
+            !commit ||
+            typeof commit.sha !== "string" ||
+            typeof commit.message !== "string"
+        ) {
+            container.textContent =
+                "Latest commit is temporarily unavailable.";
+
+            if (Array.isArray(data.warnings)) {
+                data.warnings.forEach(warning => {
+                    console.warn("[Dashboard]", warning);
+                });
+            }
+
+            return;
+        }
+
+        const message = document.createElement("div");
+        const sha = document.createElement("span");
+
+        sha.className = "commit-sha";
+        sha.textContent = commit.sha.slice(0, 12);
+
+        message.append(
+            sha,
+            document.createTextNode(
+                ` — ${commit.message.split("\n")[0]}`
+            )
+        );
+
+        const date = document.createElement("div");
+        date.textContent = commit.date
+            ? new Date(commit.date).toLocaleString()
+            : "Unknown date";
+
+        container.append(message, date);
+
+        if (typeof commit.url === "string" && commit.url.startsWith("https://")) {
+            const linkContainer = document.createElement("div");
+            const link = document.createElement("a");
+
+            link.href = commit.url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.textContent = "Open commit on GitHub";
+
+            linkContainer.appendChild(link);
+            container.appendChild(linkContainer);
+        }
+
+        if (Array.isArray(data.warnings) && data.warnings.length) {
+            data.warnings.forEach(warning => {
+                console.warn("[Dashboard]", warning);
+            });
+        }
     } catch (error) {
-        $("#commit-info").textContent = error.message;
+        console.error("[Dashboard] Failed to load status:", error);
+        $("#commit-info").textContent =
+            "Unable to load status. Please try again.";
     }
 }
 
