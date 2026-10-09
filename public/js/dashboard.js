@@ -60,9 +60,19 @@ function switchSection(section) {
     if (section === "script") loadScript();
 }
 
+
 async function loadUsers() {
     try {
         const data = await api("/api/users");
+        if (
+            !data ||
+            !Array.isArray(data.users) ||
+            !data.users.every(user => typeof user === "string")
+        ) {
+            throw new Error(
+                "Invalid users response. Keeping the previous user list."
+            );
+        }
         state.users = data.users;
         renderUsers();
     } catch (error) {
