@@ -128,26 +128,36 @@ async function updateFile(pathname, content, message, sha) {
     };
 }
 
+
 async function getLatestCommit() {
     const octokit = await getClient();
 
-    const { data } = await octokit.rest.repos.getBranch({
+    const { data } = await octokit.rest.repos.getCommit({
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
-        branch: GITHUB_BRANCH,
+        ref: GITHUB_BRANCH,
         headers: {
             Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2026-03-10",
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache"
+            "X-GitHub-Api-Version": "2022-11-28"
         }
     });
 
+    if (
+        !data ||
+        typeof data.sha !== "string" ||
+        !data.commit ||
+        typeof data.commit.message !== "string"
+    ) {
+        throw new Error(
+            "GitHub returned an incomplete latest-commit response."
+        );
+    }
+
     return {
-        sha: data.commit.sha,
-        message: data.commit.commit.message,
-        date: data.commit.commit.author?.date || null,
-        url: data.commit.html_url
+        sha: data.sha,
+        message: data.commit.message,
+        date: data.commit.author?.date || null,
+        url: data.html_url || null
     };
 }
 
