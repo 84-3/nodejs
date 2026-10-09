@@ -197,26 +197,47 @@ router.put("/script", async (req, res) => {
     }
 });
 
+
 router.get("/status", async (req, res) => {
-    try {
-        const commit = await getLatestCommit();
+    const [commitResult, usersResult] = await Promise.allSettled([
+        getLatestCommit(),
+        getFile(USERS_PATH)
+    ]);
 
-        let localUsers = 0;
-        try {
-            const local = JSON.parse(
-                fs.readFileSync(path.join(__dirname, "../data/users.json"), "utf8")
-            );
-            localUsers = Array.isArray(local.users) ? local.users.length : 0;
-        } catch {}
+    let commit = null;
+    let localUsers = null;
+    const warnings = [];
 
-        res.json({
-            commit,
-            localUsers
-        });
-    } catch (error) {
-        console.error("[API] GET status:", error);
-        res.status(500).json({ error: "Failed to read GitHub status." });
+    if (commitResult.status === "fulfilled") {
+        commit = commitResult.value;
+    } else {
+        console.error(
+            "[API] GET status — latest commit:",
+            commitResult.reason
+        );
+        warnings.push("Latest commit is temporarily unavailable.");
     }
+
+    if (usersResult.status === "fulfilled") {
+        try {
+            localUsers = parseUsers(usersResult.value.content).length;
+        } catch (error) {
+            console.error("[API] GET status — users:", error);
+            warnings.push("Authorized-user count is unavailable.");
+        }
+    } else {
+        console.error(
+            "[API] GET status — users:",
+            usersResult.reason
+        );
+        warnings.push("Authorized-user count is unavailable.");
+    }
+
+    return res.json({
+        commit,
+        localUsers,
+        warnings
+    });
 });
 
 async function ensureAnalyticsTable() {
