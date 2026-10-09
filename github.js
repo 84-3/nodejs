@@ -1,15 +1,23 @@
-const { Octokit } = require("octokit");
 
 const GITHUB_OWNER = "84-3";
 const GITHUB_REPO = "nodejs";
 const GITHUB_BRANCH = "main";
 
-function getClient() {
+let octokitClassPromise;
+
+async function getClient() {
     const token = process.env.GITHUB_TOKEN;
 
     if (!token) {
         throw new Error("GITHUB_TOKEN is not configured.");
     }
+
+    // Octokit v5 is ESM-only, so load it dynamically from CommonJS.
+    octokitClassPromise ??= import("octokit").then(
+        ({ Octokit }) => Octokit
+    );
+
+    const Octokit = await octokitClassPromise;
 
     return new Octokit({ auth: token });
 }
@@ -36,8 +44,11 @@ async function fetchRawFile(url, token) {
 
     if (!response.ok) {
         const body = await response.text().catch(() => "");
+
         throw new Error(
-            `Failed to fetch raw GitHub file (${response.status}): ${body || response.statusText}`
+            `Failed to fetch raw GitHub file (${response.status}): ${
+                body || response.statusText
+            }`
         );
     }
 
@@ -45,7 +56,7 @@ async function fetchRawFile(url, token) {
 }
 
 async function getFile(pathname) {
-    const octokit = getClient();
+    const octokit = await getClient();
     const token = process.env.GITHUB_TOKEN;
 
     const { data } = await octokit.rest.repos.getContent({
@@ -67,7 +78,6 @@ async function getFile(pathname) {
 
     let content = null;
 
-    // Small files are returned normally as Base64 content.
     if (
         typeof data.content === "string" &&
         data.content.length > 0 &&
@@ -78,8 +88,6 @@ async function getFile(pathname) {
             .toString("utf8");
     }
 
-    // Large files can have no usable `content` field.
-    // Fetch them through GitHub's raw file endpoint instead.
     if (content === null) {
         const rawUrl = data.download_url || buildRawUrl(pathname);
         content = await fetchRawFile(rawUrl, token);
@@ -95,7 +103,7 @@ async function getFile(pathname) {
 }
 
 async function updateFile(pathname, content, message, sha) {
-    const octokit = getClient();
+    const octokit = await getClient();
 
     const payload = {
         owner: GITHUB_OWNER,
@@ -121,7 +129,7 @@ async function updateFile(pathname, content, message, sha) {
 }
 
 async function getLatestCommit() {
-    const octokit = getClient();
+    const octokit = await getClient();
 
     const { data } = await octokit.rest.repos.getBranch({
         owner: GITHUB_OWNER,
