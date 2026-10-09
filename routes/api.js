@@ -287,9 +287,11 @@ router.get("/analytics", async (req, res) => {
             )
         );
 
-        const executions = result.rows
+        const rows = Array.isArray(result.rows) ? result.rows : [];
+        
+        const executions = rows
             .filter(row =>
-                authorizedSet.has(String(row.username).trim().toLowerCase())
+                authorizedSet.has(String(row.username ?? "").trim().toLowerCase())
             )
             .map(row => ({
                 username: String(row.username),
