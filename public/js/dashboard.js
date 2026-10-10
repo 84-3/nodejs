@@ -1,5 +1,6 @@
 const state = {
     users: [],
+    usersLoaded: false,
     scriptLoaded: false,
     analyticsLoaded: false
 };
@@ -55,9 +56,9 @@ function switchSection(section) {
     $("#page-title").textContent = titles[section][0];
     $("#page-subtitle").textContent = titles[section][1];
 
-    if (section === "users") loadUsers();
-    if (section === "analytics") loadAnalytics();
-    if (section === "script") loadScript();
+    if (section === "users" && !state.usersLoaded) { loadUsers(); }
+    if (section === "analytics" && !state.analyticsLoaded) { loadAnalytics(); }
+    if (section === "script") { loadScript(); }
 }
 
 
@@ -75,6 +76,7 @@ async function loadUsers() {
         }
         state.users = data.users;
         renderUsers();
+        state.usersLoaded = true;
     } catch (error) {
         toast(error.message, true);
     }
@@ -126,14 +128,25 @@ function renderUsers() {
     });
 }
 
+
 async function removeUser(username) {
     if (!confirm(`Remove "${username}" from the authorized users?`)) return;
 
     try {
-        await api(`/api/users/${encodeURIComponent(username)}`, {
-            method: "DELETE"
-        });
-        toast(`Removed ${username}. GitHub commit created.`);
+        const result = await api(
+            `/api/users/${encodeURIComponent(username)}`,
+            { method: "DELETE" }
+        );
+
+        if (result.commitVerified) {
+            toast(`Removed ${username}. Commit: ${result.commit.commitSha.slice(0, 7)}.`);
+        } else {
+            toast(
+                `Removed ${username}, but the commit could not be verified yet. Check GitHub.`,
+                true
+            );
+        }
+
         await Promise.all([loadUsers(), loadStatus()]);
     } catch (error) {
         toast(error.message, true);
@@ -152,6 +165,7 @@ function closeModal() {
     $("#modal").classList.add("hidden");
 }
 
+
 async function addUser() {
     const username = $("#modal-input").value.trim();
 
@@ -160,17 +174,31 @@ async function addUser() {
         return;
     }
 
+    const button = $("#modal-confirm");
+    button.disabled = true;
+
     try {
-        await api("/api/users", {
+        const result = await api("/api/users", {
             method: "POST",
             body: JSON.stringify({ username })
         });
 
         closeModal();
-        toast(`Added ${username}. GitHub commit created.`);
+
+        if (result.commitVerified) {
+            toast(`Added ${username}. Commit: ${result.commit.commitSha.slice(0, 7)}.`);
+        } else {
+            toast(
+                `Added ${username}, but the commit could not be verified yet. Check GitHub.`,
+                true
+            );
+        }
+
         await Promise.all([loadUsers(), loadStatus()]);
     } catch (error) {
         toast(error.message, true);
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -239,6 +267,16 @@ function renderPieChart(chartId, legendId, items) {
 async function loadAnalytics() {
     try {
         const data = await api("/api/analytics");
+
+        if (
+            !data ||
+            !Number.isFinite(data.totalExecutions) ||
+            !Array.isArray(data.executors) ||
+            !Array.isArray(data.devices) ||
+            !Array.isArray(data.users)
+        ) {
+            throw new Error("Invalid analytics response. Please refresh.");
+        }
 
         $("#analytics-total").textContent = data.totalExecutions;
         $("#analytics-executor-count").textContent = data.executors.length;
@@ -357,13 +395,14 @@ async function loadScript() {
     }
 }
 
+
 async function saveScript() {
     const button = $("#save-script");
     const content = $("#script-editor").value;
 
     button.disabled = true;
     button.textContent = "Committing…";
-    $("#script-state").textContent = "Creating GitHub commit…";
+    $("#script-state").textContent = "Saving to GitHub…";
 
     try {
         const result = await api("/api/script", {
@@ -374,15 +413,22 @@ async function saveScript() {
         if (result.changed === false) {
             toast("No changes to commit.");
             $("#script-state").textContent = "No changes";
+        } else if (result.commitVerified) {
+            toast(`Script saved. Commit: ${result.commit.commitSha.slice(0, 7)}.`);
+            $("#script-state").textContent =
+                `Committed ${result.commit.commitSha.slice(0, 7)}`;
         } else {
-            toast("Script committed to GitHub. Railway will deploy it automatically.");
-            $("#script-state").textContent = `Committed ${result.commit.commitSha.slice(0, 7)}`;
+            toast(
+                "Script saved, but the commit could not be verified yet. Check GitHub.",
+                true
+            );
+            $("#script-state").textContent = "Saved — commit unverified";
         }
 
         await loadStatus();
     } catch (error) {
         toast(error.message, true);
-        $("#script-state").textContent = "Commit failed";
+        $("#script-state").textContent = "Save failed — check GitHub before retrying";
     } finally {
         button.disabled = false;
         button.textContent = "Save & Commit";
@@ -485,6 +531,7 @@ document.querySelectorAll(".nav-item").forEach(button => {
 });
 
 $("#refresh").addEventListener("click", async () => {
+    state.usersLoaded = false;
     state.scriptLoaded = false;
     state.analyticsLoaded = false;
 
