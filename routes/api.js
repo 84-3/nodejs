@@ -56,6 +56,23 @@ function parseUsers(content) {
     return data.users;
 }
 
+router.get("/users", async (req, res) => {
+    try {
+        const file = await getFile(USERS_PATH);
+        const users = parseUsers(file.content);
+
+        return res.status(200).json({
+            success: true,
+            users
+        });
+    } catch (error) {
+        console.error("[API] GET users:", error);
+
+        return res.status(500).json({
+            error: "Failed to load authorized users."
+        });
+    }
+});
 
 router.post("/users", async (req, res) => {
     const username = String(req.body?.username || "").trim();
