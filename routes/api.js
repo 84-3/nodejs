@@ -1,11 +1,10 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const { createClient } = require("@libsql/client");
 
 const {
     getFile,
     updateFile,
+    updateFileSafely,
     getLatestCommit
 } = require("../github");
 
@@ -57,18 +56,63 @@ function parseUsers(content) {
     return data.users;
 }
 
-router.get("/users", async (req, res) => {
-    try {
-        const file = await getFile(USERS_PATH);
-        const users = parseUsers(file.content);
 
-        res.json({
-            users,
-            count: users.length
+router.post("/users", async (req, res) => {
+    const username = String(req.body?.username || "").trim();
+
+    if (!username) {
+        return res.status(400).json({ error: "Username is required." });
+    }
+
+    if (username.length > 32 || /[\r\n]/.test(username)) {
+        return res.status(400).json({ error: "Invalid username." });
+    }
+
+    let alreadyExists = false;
+
+    try {
+        const result = await updateFileSafely(
+            USERS_PATH,
+            `auth: add ${username}`,
+            content => {
+                const users = parseUsers(content);
+                alreadyExists = users.some(
+                    user =>
+                        String(user).trim().toLowerCase() ===
+                        username.toLowerCase()
+                );
+                if (alreadyExists) return null;
+                users.push(username);
+                return JSON.stringify({ users }, null, 2) + "\n";
+            },
+            content =>
+                parseUsers(content).some(
+                    user =>
+                        String(user).trim().toLowerCase() ===
+                        username.toLowerCase()
+                )
+        );
+        if (!result.changed) {
+            return res.status(409).json({
+                error: alreadyExists
+                    ? "User is already authorized."
+                    : "No changes were made."
+            });
+        }
+        return res.json({
+            success: true,
+            username,
+            commit: result.commit,
+            commitVerified: Boolean(result.commit?.commitSha),
+            warning: result.commit
+                ? null
+                : "The user list was saved, but the latest commit could not yet be verified."
         });
     } catch (error) {
-        console.error("[API] GET users:", error);
-        res.status(500).json({ error: "Failed to read users.json." });
+        console.error("[API] POST users:", error);
+        return res.status(500).json({
+            error: error.message || "Failed to add user. Check GitHub before retrying."
+        });
     }
 });
 
@@ -115,36 +159,70 @@ router.post("/users", async (req, res) => {
     }
 });
 
+
 router.delete("/users/:username", async (req, res) => {
     const username = String(req.params.username || "").trim();
 
-    try {
-        const file = await getFile(USERS_PATH);
-        const users = parseUsers(file.content);
+    if (!username) {
+        return res.status(400).json({ error: "Username is required." });
+    }
 
-        const nextUsers = users.filter(
-            user => String(user).toLowerCase() !== username.toLowerCase()
+    let userWasFound = false;
+
+    try {
+        const result = await updateFileSafely(
+            USERS_PATH,
+            `auth: remove ${username}`,
+            content => {
+                const users = parseUsers(content);
+
+                userWasFound = users.some(
+                    user =>
+                        String(user).trim().toLowerCase() ===
+                        username.toLowerCase()
+                );
+
+                if (!userWasFound) return null;
+
+                const nextUsers = users.filter(
+                    user =>
+                        String(user).trim().toLowerCase() !==
+                        username.toLowerCase()
+                );
+
+                return JSON.stringify({ users: nextUsers }, null, 2) + "\n";
+            },
+            content =>
+                !parseUsers(content).some(
+                    user =>
+                        String(user).trim().toLowerCase() ===
+                        username.toLowerCase()
+                )
         );
 
-        if (nextUsers.length === users.length) {
-            return res.status(404).json({ error: "User not found." });
+        if (!result.changed) {
+            return res.status(404).json({
+                error: userWasFound
+                    ? "No changes were made."
+                    : "User not found."
+            });
         }
 
-        const result = await updateFile(
-            USERS_PATH,
-            JSON.stringify({ users: nextUsers }, null, 2) + "\n",
-            `auth: remove ${username}`,
-            file.sha
-        );
-
-        res.json({
+        return res.json({
             success: true,
             username,
-            commit: result
+            commit: result.commit,
+            commitVerified: Boolean(result.commit?.commitSha),
+            warning: result.commit
+                ? null
+                : "The user list was saved, but the latest commit could not yet be verified."
         });
     } catch (error) {
         console.error("[API] DELETE users:", error);
-        res.status(500).json({ error: "Failed to remove user." });
+
+        return res.status(500).json({
+            error: error.message || "Failed to remove user. Check GitHub before retrying."
+        });
     }
 });
 
@@ -161,17 +239,28 @@ router.get("/script", async (req, res) => {
     }
 });
 
+
 router.put("/script", async (req, res) => {
-    const content = typeof req.body.content === "string" ? req.body.content : null;
+    const content = typeof req.body?.content === "string"
+        ? req.body.content
+        : null;
 
     if (content === null) {
-        return res.status(400).json({ error: "Script content is required." });
+        return res.status(400).json({
+            error: "Script content is required."
+        });
     }
 
     try {
-        const file = await getFile(SCRIPT_PATH);
+        const result = await updateFileSafely(
+            SCRIPT_PATH,
+            "script: update Roblox loader",
+            currentContent =>
+                content === currentContent ? null : content,
+            currentContent => currentContent === content
+        );
 
-        if (content === file.content) {
+        if (!result.changed) {
             return res.json({
                 success: true,
                 changed: false,
@@ -179,21 +268,21 @@ router.put("/script", async (req, res) => {
             });
         }
 
-        const result = await updateFile(
-            SCRIPT_PATH,
-            content,
-            "script: update Roblox loader",
-            file.sha
-        );
-
-        res.json({
+        return res.json({
             success: true,
             changed: true,
-            commit: result
+            commit: result.commit,
+            commitVerified: Boolean(result.commit?.commitSha),
+            warning: result.commit
+                ? null
+                : "The script was saved, but the latest commit could not yet be verified."
         });
     } catch (error) {
         console.error("[API] PUT script:", error);
-        res.status(500).json({ error: "Failed to update script.lua." });
+
+        return res.status(500).json({
+            error: error.message || "Failed to update script.lua. Check GitHub before retrying."
+        });
     }
 });
 
