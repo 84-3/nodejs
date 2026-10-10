@@ -15,26 +15,41 @@ function toast(message, error = false) {
     setTimeout(() => node.remove(), 3500);
 }
 
+
 async function api(url, options = {}) {
-    const response = await fetch(url, {
-        cache: "no-store",
-        ...options,
-        headers: {
-            "Content-Type": "application/json",
-            ...(options.headers || {})
-        }
-    });
-
-    let data = {};
-    try {
-        data = await response.json();
-    } catch {}
-
-    if (!response.ok) {
-        throw new Error(data.error || `Request failed (${response.status})`);
+  const response = await fetch(url, {
+    ...options,
+    credentials: "same-origin",
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers
     }
+  });
 
-    return data;
+  const contentType = response.headers.get("content-type") || "";
+
+  if (response.redirected) {
+    throw new Error(
+      `API redirected to ${response.url}. Your session may have expired or authentication is redirecting API requests.`
+    );
+  }
+
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+
+    throw new Error(
+      `API returned non-JSON data (HTTP ${response.status}). ` +
+      `Expected JSON from ${url}. Response: ${body.slice(0, 150)}`
+    );
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || `API request failed: HTTP ${response.status}`);
+  }
+
+  return data;
 }
 
 function switchSection(section) {
