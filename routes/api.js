@@ -116,49 +116,6 @@ router.post("/users", async (req, res) => {
     }
 });
 
-router.post("/users", async (req, res) => {
-    const username = String(req.body.username || "").trim();
-
-    if (!username) {
-        return res.status(400).json({ error: "Username is required." });
-    }
-
-    if (username.length > 32 || /[\r\n]/.test(username)) {
-        return res.status(400).json({ error: "Invalid username." });
-    }
-
-    try {
-        const file = await getFile(USERS_PATH);
-        const users = parseUsers(file.content);
-
-        const exists = users.some(
-            user => String(user).toLowerCase() === username.toLowerCase()
-        );
-
-        if (exists) {
-            return res.status(409).json({ error: "User is already authorized." });
-        }
-
-        users.push(username);
-
-        const result = await updateFile(
-            USERS_PATH,
-            JSON.stringify({ users }, null, 2) + "\n",
-            `auth: add ${username}`,
-            file.sha
-        );
-
-        res.json({
-            success: true,
-            username,
-            commit: result
-        });
-    } catch (error) {
-        console.error("[API] POST users:", error);
-        res.status(500).json({ error: "Failed to add user." });
-    }
-});
-
 
 router.delete("/users/:username", async (req, res) => {
     const username = String(req.params.username || "").trim();
