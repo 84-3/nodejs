@@ -4,7 +4,6 @@ const path = require("path");
 const router = express.Router();
 
 router.get("/login", (req, res) => {
-    // Serve a simple login page
     res.sendFile(path.join(__dirname, "../views/login.html"));
 });
 
@@ -17,19 +16,20 @@ router.post("/login", (req, res) => {
         process.env.DASHBOARD_PASSWORD &&
         password === process.env.DASHBOARD_PASSWORD
     ) {
-        req.session.authenticated = true;
-        req.session.user = username;
+        req.session = {
+            authenticated: true,
+            user: username
+        };
+
         return res.redirect("/");
     }
 
-    // Invalid login, redirect back to login with 401
-    res.status(401).redirect("/login");
+    return res.status(401).redirect("/login");
 });
 
 router.post("/logout", (req, res) => {
-    req.session.destroy(() => {
-        res.redirect("/login");
-    });
+    req.session = null;
+    return res.redirect("/login");
 });
 
 module.exports = router;
