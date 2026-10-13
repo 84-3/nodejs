@@ -1,0 +1,11 @@
+[build]
+  command = "yarn install"
+  # Only publish static assets; publishing the repo root exposed server code,
+  # data files, and node_modules as public files.
+  publish = "public"
+
+[build.environment]
+  # DASHBOARD_USER matches the project's brand name and PORT is a plain port
+  # number, so the scanner flags ordinary text. Neither is a secret.
+  # Real secrets (GITHUB_TOKEN, TURSO_*, DASHBOARD_PASSWORD) stay scanned.
+  SECRETS_SCAN_OMIT_KEYS = "DASHBOARD_USER,PORT"
