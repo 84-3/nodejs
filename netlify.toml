@@ -1,5 +1,5 @@
 [build]
-  command = "yarn install"
+  command = "node app.js"
   # Only publish static assets; publishing the repo root exposed server code,
   # data files, and node_modules as public files.
   publish = "public"
