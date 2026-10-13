@@ -141,7 +141,9 @@ async function getAuthorizedUsers() {
     const file = await getFile(USERS_PATH);
     const data = JSON.parse(file.content);
     const users = Array.isArray(data.users) ? data.users : [];
-    const normalized = new Set(users.map(normalizeUsername).filter(Boolean));
+    const normalized = new Set(
+        users.map(normalizeUsername).filter(Boolean)
+    );
 
     allowedCache = {
         expiresAt: now + AUTH_CACHE_MS,
@@ -206,35 +208,119 @@ function sanitizeEffects(value) {
     return output;
 }
 
+function isPlainObject(value) {
+    return Boolean(
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+    );
+}
+
+function sanitizeCardName(value) {
+    if (typeof value !== "string") return null;
+
+    const name = value.trim();
+
+    if (!name || name.length > 100 || /[\r\n]/.test(name)) {
+        return null;
+    }
+
+    return name;
+}
+
+function sanitizeRankedCardMetadata(value) {
+    if (!isPlainObject(value)) return null;
+
+    const rawRank = Number(value.seasonRank ?? value.SeasonRank);
+    const allowedRanks = new Set([13, 14, 15, 16, 17]);
+
+    const normalizedRank =
+        Number.isFinite(rawRank) && allowedRanks.has(Math.floor(rawRank))
+            ? Math.floor(rawRank)
+            : 13;
+
+    const normalizeCount = raw => {
+        const numeric = Number(raw);
+
+        if (!Number.isFinite(numeric)) return 0;
+
+        return Math.floor(
+            Math.max(0, Math.min(2147483647, numeric))
+        );
+    };
+
+    return {
+        seasonRank: normalizedRank,
+        wins: normalizeCount(value.wins ?? value.Wins),
+        losses: normalizeCount(value.losses ?? value.Losses)
+    };
+}
+
 function sanitizePlayerCards(value) {
     let source = value;
 
-    if (typeof source === "string") {
+    // Accept an object or the JSON string posted by the Luau client.
+    // A second decode pass tolerates accidentally double-encoded payloads.
+    for (
+        let attempt = 0;
+        attempt < 2 && typeof source === "string";
+        attempt += 1
+    ) {
         try {
             source = JSON.parse(source);
         } catch {
-            source = {};
+            return {};
         }
     }
 
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
-        return {};
-    }
+    if (!isPlainObject(source)) return {};
+
+    const cardSource = isPlainObject(source.cards)
+        ? source.cards
+        : (isPlainObject(source.values) ? source.values : source);
 
     const output = {};
 
-    for (const [name, priority] of Object.entries(source)) {
+    // Preserve the traditional { CardName: priority } structure.
+    // Ranked metadata is stored separately under __sfxdarei.
+    for (const [name, priority] of Object.entries(cardSource)) {
+        if (
+            name === "__sfxdarei" ||
+            name === "cards" ||
+            name === "values"
+        ) {
+            continue;
+        }
+
+        const safeName = sanitizeCardName(name);
         const numeric = Number(priority);
 
         if (
-            typeof name === "string" &&
-            name.length > 0 &&
-            name.length <= 100 &&
+            safeName &&
             Number.isFinite(numeric) &&
             numeric >= 0
         ) {
-            output[name] = numeric;
+            output[safeName] = numeric;
         }
+    }
+
+    // Validate only the supported metadata fields.
+    const metadata = isPlainObject(source.__sfxdarei)
+        ? source.__sfxdarei
+        : (isPlainObject(source.metadata) ? source.metadata : null);
+
+    if (metadata) {
+        const ranked = sanitizeRankedCardMetadata(
+            metadata.rankedPlayerCard ??
+            metadata.ranked_player_card
+        );
+
+        output.__sfxdarei = {
+            version: 2,
+            enabled: metadata.enabled === true,
+            current: sanitizeCardName(metadata.current),
+            ...(ranked ? { rankedPlayerCard: ranked } : {})
+        };
     }
 
     return output;
@@ -267,7 +353,7 @@ function sanitizeUpdate(type, value) {
         return sanitizePlayerCards(value);
     }
 
-    // Kept for compatibility with clients that announce the effect
+    // Compatibility with clients that announce the effect
     // immediately after a score.
     if (type === "scoreEffect") {
         return sanitizeString(value);
@@ -282,30 +368,21 @@ function sanitizeUpdate(type, value) {
     ) {
         const text = sanitizeString(value);
 
-        if (
-            type === "nextScoreEffect" &&
-            !text
-        ) {
-            throw new Error(
-                "Invalid next score effect."
-            );
+        if (type === "nextScoreEffect" && !text) {
+            throw new Error("Invalid next score effect.");
         }
 
         return text;
     }
 
-    throw new Error(
-        "Unsupported sync type."
-    );
+    throw new Error("Unsupported sync type.");
 }
 
 function decodeState(row) {
     let scoreEffects = {};
 
     try {
-        scoreEffects = JSON.parse(
-            row.score_effects || "{}"
-        );
+        scoreEffects = JSON.parse(row.score_effects || "{}");
     } catch {
         scoreEffects = {};
     }
@@ -313,9 +390,7 @@ function decodeState(row) {
     let playerCards = {};
 
     try {
-        playerCards = JSON.parse(
-            row.player_cards || "{}"
-        );
+        playerCards = JSON.parse(row.player_cards || "{}");
     } catch {
         playerCards = {};
     }
@@ -351,9 +426,7 @@ function encodeEvent(row) {
         row.type === "playerCards"
     ) {
         try {
-            value = JSON.parse(
-                value || "{}"
-            );
+            value = JSON.parse(value || "{}");
         } catch {
             value = {};
         }
@@ -369,8 +442,7 @@ function encodeEvent(row) {
 }
 
 async function cleanupOldEvents() {
-    const cutoff =
-        Date.now() - EVENT_RETENTION_MS;
+    const cutoff = Date.now() - EVENT_RETENTION_MS;
 
     try {
         await getDatabase().execute({
@@ -395,24 +467,22 @@ router.get(
         try {
             await initDatabase();
 
-            const authorizedUsers =
-                await getAuthorizedUsers();
+            const authorizedUsers = await getAuthorizedUsers();
 
-            const result =
-                await getDatabase().execute(`
-                    SELECT
-                        username,
-                        score_effects,
-                        next_score_effect,
-                        level,
-                        nametag,
-                        player_card,
-                        player_cards,
-                        jersey,
-                        updated_at,
-                        last_seen
-                    FROM user_states
-                `);
+            const result = await getDatabase().execute(`
+                SELECT
+                    username,
+                    score_effects,
+                    next_score_effect,
+                    level,
+                    nametag,
+                    player_card,
+                    player_cards,
+                    jersey,
+                    updated_at,
+                    last_seen
+                FROM user_states
+            `);
 
             const states = result.rows
                 .filter(row =>
@@ -422,34 +492,26 @@ router.get(
                 )
                 .map(decodeState);
 
-            const cursorResult =
-                await getDatabase().execute(`
-                    SELECT id
-                    FROM sync_events
-                    ORDER BY id DESC
-                    LIMIT 1
-                `);
+            const cursorResult = await getDatabase().execute(`
+                SELECT id
+                FROM sync_events
+                ORDER BY id DESC
+                LIMIT 1
+            `);
 
-            const cursor =
-                cursorResult.rows.length
-                    ? String(
-                        cursorResult.rows[0].id
-                    )
-                    : null;
+            const cursor = cursorResult.rows.length
+                ? String(cursorResult.rows[0].id)
+                : null;
 
             return res.json({
                 states,
                 cursor
             });
         } catch (error) {
-            console.error(
-                "[Sync] GET state:",
-                error
-            );
+            console.error("[Sync] GET state:", error);
 
             return res.status(503).json({
-                error:
-                    "Synchronization service unavailable."
+                error: "Synchronization service unavailable."
             });
         }
     }
@@ -462,36 +524,26 @@ router.get(
         try {
             await initDatabase();
 
-            const authorizedUsers =
-                await getAuthorizedUsers();
+            const authorizedUsers = await getAuthorizedUsers();
 
             const after =
-                Number.parseInt(
-                    String(
-                        req.query.after || "0"
-                    ),
-                    10
-                ) || 0;
+                Number.parseInt(String(req.query.after || "0"), 10) || 0;
 
-            const result =
-                await getDatabase().execute({
-                    sql: `
-                        SELECT
-                            id,
-                            username,
-                            type,
-                            value,
-                            created_at
-                        FROM sync_events
-                        WHERE id > ?
-                        ORDER BY id ASC
-                        LIMIT ?
-                    `,
-                    args: [
-                        after,
-                        POLL_LIMIT
-                    ]
-                });
+            const result = await getDatabase().execute({
+                sql: `
+                    SELECT
+                        id,
+                        username,
+                        type,
+                        value,
+                        created_at
+                    FROM sync_events
+                    WHERE id > ?
+                    ORDER BY id ASC
+                    LIMIT ?
+                `,
+                args: [after, POLL_LIMIT]
+            });
 
             const events = result.rows
                 .filter(row =>
@@ -501,28 +553,19 @@ router.get(
                 )
                 .map(encodeEvent);
 
-            const newestId =
-                result.rows.length
-                    ? String(
-                        result.rows[
-                            result.rows.length - 1
-                        ].id
-                    )
-                    : String(after);
+            const newestId = result.rows.length
+                ? String(result.rows[result.rows.length - 1].id)
+                : String(after);
 
             return res.json({
                 events,
                 cursor: newestId
             });
         } catch (error) {
-            console.error(
-                "[Sync] GET changes:",
-                error
-            );
+            console.error("[Sync] GET changes:", error);
 
             return res.status(503).json({
-                error:
-                    "Synchronization service unavailable."
+                error: "Synchronization service unavailable."
             });
         }
     }
@@ -535,41 +578,28 @@ router.post(
         try {
             await initDatabase();
 
-            const type = String(
-                req.body?.type || ""
-            ).trim();
+            const type = String(req.body?.type || "").trim();
+            const value = sanitizeUpdate(type, req.body?.value);
+            const username = req.syncUsername;
+            const now = Date.now();
+            const client = getDatabase();
 
-            const value = sanitizeUpdate(
-                type,
-                req.body?.value
-            );
-
-            const username =
-                req.syncUsername;
-
-            const now =
-                Date.now();
-
-            const client =
-                getDatabase();
-
-            const stateResult =
-                await client.execute({
-                    sql: `
-                        SELECT
-                            score_effects,
-                            next_score_effect,
-                            level,
-                            nametag,
-                            player_card,
-                            player_cards,
-                            jersey
-                        FROM user_states
-                        WHERE username = ?
-                        LIMIT 1
-                    `,
-                    args: [username]
-                });
+            const stateResult = await client.execute({
+                sql: `
+                    SELECT
+                        score_effects,
+                        next_score_effect,
+                        level,
+                        nametag,
+                        player_card,
+                        player_cards,
+                        jersey
+                    FROM user_states
+                    WHERE username = ?
+                    LIMIT 1
+                `,
+                args: [username]
+            });
 
             let scoreEffects = {};
             let nextScoreEffect = null;
@@ -579,131 +609,82 @@ router.post(
             let playerCards = {};
             let jersey = null;
 
-            if (
-                stateResult.rows.length
-            ) {
-                const row =
-                    stateResult.rows[0];
+            if (stateResult.rows.length) {
+                const row = stateResult.rows[0];
 
                 try {
-                    scoreEffects =
-                        JSON.parse(
-                            row.score_effects ||
-                            "{}"
-                        );
+                    scoreEffects = JSON.parse(row.score_effects || "{}");
                 } catch {
                     scoreEffects = {};
                 }
 
-                nextScoreEffect =
-                    row.next_score_effect ||
-                    null;
-
-                level =
-                    row.level ||
-                    null;
-
-                nametag =
-                    row.nametag ||
-                    null;
-
-                playerCard =
-                    row.player_card ||
-                    null;
+                nextScoreEffect = row.next_score_effect || null;
+                level = row.level || null;
+                nametag = row.nametag || null;
+                playerCard = row.player_card || null;
 
                 try {
-                    playerCards =
-                        JSON.parse(
-                            row.player_cards ||
-                            "{}"
-                        );
+                    playerCards = JSON.parse(row.player_cards || "{}");
                 } catch {
                     playerCards = {};
                 }
 
-                playerCards =
-                    sanitizePlayerCards(
-                        playerCards
-                    );
+                playerCards = sanitizePlayerCards(playerCards);
 
                 // Migrate legacy single-card data.
                 if (
-                    Object.keys(
-                        playerCards
-                    ).length === 0 &&
+                    Object.keys(playerCards).length === 0 &&
                     typeof playerCard === "string" &&
                     playerCard !== ""
                 ) {
-                    playerCards[
-                        playerCard
-                    ] = 100;
+                    playerCards[playerCard] = 100;
                 }
 
-                jersey =
-                    row.jersey ||
-                    null;
+                jersey = row.jersey || null;
             }
 
-            scoreEffects =
-                sanitizeEffects(
-                    scoreEffects
-                );
+            scoreEffects = sanitizeEffects(scoreEffects);
 
-            if (
-                type === "scoreEffects"
-            ) {
+            if (type === "scoreEffects") {
                 scoreEffects = value;
-
-            } else if (
-                type === "nextScoreEffect"
-            ) {
+            } else if (type === "nextScoreEffect") {
                 nextScoreEffect = value;
-
-            } else if (
-                type === "level"
-            ) {
+            } else if (type === "level") {
                 level = value;
-
-            } else if (
-                type === "nametag"
-            ) {
+            } else if (type === "nametag") {
                 nametag = value;
-
-            } else if (
-                type === "playerCard"
-            ) {
+            } else if (type === "playerCard") {
                 playerCard = value;
 
                 // Keep the multi-card pool authoritative.
                 // Legacy single-card updates only create a pool
                 // when no multi-card state exists.
-                if (
-                    Object.keys(
-                        playerCards
-                    ).length === 0
-                ) {
-                    playerCards =
-                        value
-                            ? { [value]: 100 }
-                            : {};
+                if (Object.keys(playerCards).length === 0) {
+                    playerCards = value ? { [value]: 100 } : {};
                 }
-
-            } else if (
-                type === "playerCards"
-            ) {
+            } else if (type === "playerCards") {
                 playerCards = value;
 
-                const cardNames =
-                    Object.keys(value);
+                const cardEntries = Object.entries(value).filter(
+                    ([name, priority]) =>
+                        name !== "__sfxdarei" &&
+                        typeof priority === "number" &&
+                        Number.isFinite(priority) &&
+                        priority >= 0
+                );
+
+                const metadata = isPlainObject(value.__sfxdarei)
+                    ? value.__sfxdarei
+                    : null;
+
+                const declaredCurrent = sanitizeCardName(metadata?.current);
 
                 playerCard =
-                    cardNames.length > 0
-                        ? cardNames[0]
-                        : null;
-
-            } else if (
-                type === "jersey"
-            ) {
+                    declaredCurrent &&
+                    cardEntries.some(([name]) => name === declaredCurrent)
+                        ? declaredCurrent
+                        : (cardEntries.length > 0 ? cardEntries[0][0] : null);
+            } else if (type === "jersey") {
                 jersey = value;
             }
 
@@ -721,51 +702,28 @@ router.post(
                         updated_at,
                         last_seen
                     )
-                    VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
                     ON CONFLICT(username)
                     DO UPDATE SET
-                        score_effects =
-                            excluded.score_effects,
-
-                        next_score_effect =
-                            excluded.next_score_effect,
-
-                        level =
-                            excluded.level,
-
-                        nametag =
-                            excluded.nametag,
-
-                        player_card =
-                            excluded.player_card,
-
-                        player_cards =
-                            excluded.player_cards,
-
-                        jersey =
-                            excluded.jersey,
-
-                        updated_at =
-                            excluded.updated_at,
-
-                        last_seen =
-                            excluded.last_seen
+                        score_effects = excluded.score_effects,
+                        next_score_effect = excluded.next_score_effect,
+                        level = excluded.level,
+                        nametag = excluded.nametag,
+                        player_card = excluded.player_card,
+                        player_cards = excluded.player_cards,
+                        jersey = excluded.jersey,
+                        updated_at = excluded.updated_at,
+                        last_seen = excluded.last_seen
                 `,
                 args: [
                     username,
-                    JSON.stringify(
-                        scoreEffects
-                    ),
+                    JSON.stringify(scoreEffects),
                     nextScoreEffect,
                     level,
                     nametag,
                     playerCard,
-                    JSON.stringify(
-                        playerCards
-                    ),
+                    JSON.stringify(playerCards),
                     jersey,
                     now,
                     now
@@ -795,9 +753,7 @@ router.post(
                 ]
             });
 
-            if (
-                Math.random() < 0.03
-            ) {
+            if (Math.random() < 0.03) {
                 void cleanupOldEvents();
             }
 
@@ -805,10 +761,7 @@ router.post(
                 success: true
             });
         } catch (error) {
-            console.error(
-                "[Sync] POST update:",
-                error
-            );
+            console.error("[Sync] POST update:", error);
 
             return res.status(400).json({
                 error:
@@ -826,11 +779,8 @@ router.post(
         try {
             await initDatabase();
 
-            const now =
-                Date.now();
-
-            const client =
-                getDatabase();
+            const now = Date.now();
+            const client = getDatabase();
 
             await client.execute({
                 sql: `
@@ -841,38 +791,23 @@ router.post(
                         updated_at,
                         last_seen
                     )
-                    VALUES (
-                        ?,
-                        '{}',
-                        NULL,
-                        ?,
-                        ?
-                    )
+                    VALUES (?, '{}', NULL, ?, ?)
 
                     ON CONFLICT(username)
                     DO UPDATE SET
-                        last_seen =
-                            excluded.last_seen
+                        last_seen = excluded.last_seen
                 `,
-                args: [
-                    req.syncUsername,
-                    now,
-                    now
-                ]
+                args: [req.syncUsername, now, now]
             });
 
             return res.json({
                 success: true
             });
         } catch (error) {
-            console.error(
-                "[Sync] POST heartbeat:",
-                error
-            );
+            console.error("[Sync] POST heartbeat:", error);
 
             return res.status(503).json({
-                error:
-                    "Synchronization service unavailable."
+                error: "Synchronization service unavailable."
             });
         }
     }
@@ -885,25 +820,12 @@ router.post(
         try {
             await initDatabase();
 
-            const executor =
-                sanitizeString(
-                    req.body?.executor,
-                    100
-                );
+            const executor = sanitizeString(req.body?.executor, 100);
+            const device = sanitizeString(req.body?.device, 50);
 
-            const device =
-                sanitizeString(
-                    req.body?.device,
-                    50
-                );
-
-            if (
-                !executor ||
-                !device
-            ) {
+            if (!executor || !device) {
                 return res.status(400).json({
-                    error:
-                        "Executor and device are required."
+                    error: "Executor and device are required."
                 });
             }
 
@@ -929,14 +851,10 @@ router.post(
                 success: true
             });
         } catch (error) {
-            console.error(
-                "[Sync] POST execution:",
-                error
-            );
+            console.error("[Sync] POST execution:", error);
 
             return res.status(503).json({
-                error:
-                    "Failed to record execution."
+                error: "Failed to record execution."
             });
         }
     }
