@@ -234,7 +234,7 @@ function renderPieChart(chartId, legendId, items) {
     const chart = document.getElementById(chartId);
     const legend = document.getElementById(legendId);
 
-    chart.style.background = "#252a35";
+    chart.style.background = "var(--pie-track)";
     legend.innerHTML = "";
 
     if (!items.length) {
@@ -576,3 +576,43 @@ loadStatus();
 if ($("#analytics-section").classList.contains("active")) {
     loadAnalytics();
 }
+
+/* ---------- Mobile navigation drawer ----------
+   Progressive enhancement: on desktop the sidebar is always visible and these
+   handlers simply keep state in sync. No layout logic lives here beyond toggling
+   a class + aria flags, so nothing above is affected. */
+const sidebar = $("#sidebar");
+const sidebarOverlay = $("#sidebar-overlay");
+const navToggle = $("#nav-toggle");
+const navClose = $("#nav-close");
+
+function setNav(open) {
+    if (!sidebar || !sidebarOverlay || !navToggle) return;
+
+    sidebar.classList.toggle("open", open);
+    sidebarOverlay.hidden = !open;
+    navToggle.setAttribute("aria-expanded", String(open));
+    document.body.classList.toggle("nav-open", open);
+}
+
+function isNavOpen() {
+    return Boolean(sidebar && sidebar.classList.contains("open"));
+}
+
+navToggle?.addEventListener("click", () => setNav(!isNavOpen()));
+navClose?.addEventListener("click", () => setNav(false));
+sidebarOverlay?.addEventListener("click", () => setNav(false));
+
+// Close the drawer after choosing a section (mobile) and on Escape.
+document.querySelectorAll(".nav-item").forEach(button => {
+    button.addEventListener("click", () => setNav(false));
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && isNavOpen()) setNav(false);
+});
+
+// Reset the drawer if the viewport is resized back to the desktop layout.
+window.addEventListener("resize", () => {
+    if (window.innerWidth > 900 && isNavOpen()) setNav(false);
+});

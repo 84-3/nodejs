@@ -1,3 +1,8 @@
+// Load .env FIRST. Route modules read process.env at import time (e.g. the
+// Turso credentials in routes/api.js), so this must run before they are required.
+const { loadEnv } = require("./load-env");
+const envResult = loadEnv();
+
 const express = require("express");
 const path = require("path");
 const cookieSession = require("cookie-session");
@@ -11,6 +16,26 @@ const authRouter = require("./routes/auth");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === "production";
+
+// Fail loudly and early if login could never succeed, instead of silently
+// bouncing every user back to /login.
+const missingLoginVars = ["DASHBOARD_USER", "DASHBOARD_PASSWORD"].filter(
+    key => !process.env[key]
+);
+
+if (missingLoginVars.length) {
+    console.warn(
+        `[auth] Missing ${missingLoginVars.join(" and ")}. ` +
+        "Login will be rejected — set them in .env (see .env.example)."
+    );
+} else {
+    console.log(
+        "[auth] Dashboard login is configured" +
+        (envResult.loaded
+            ? ` (${envResult.applied.length} value(s) loaded from .env).`
+            : " (from the host environment).")
+    );
+}
 
 if (isProduction && !process.env.SESSION_SECRET) {
     throw new Error("SESSION_SECRET must be configured in production.");

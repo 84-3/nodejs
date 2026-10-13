@@ -1,0 +1,148 @@
+/* ==========================================================================
+   SFXDarei — auth.css  (sign-in view)
+   Depends on theme.css for tokens, .glass, .btn, .field, .icon-btn.
+   ========================================================================== */
+
+.auth-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-5);
+    min-height: 100dvh;
+    padding: max(24px, env(safe-area-inset-top)) var(--sp-4)
+             max(24px, env(safe-area-inset-bottom));
+}
+
+/* Theme switch pinned to the corner so it never crowds the form. */
+.auth-theme {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    z-index: 10;
+}
+
+/* ------------------------------------------------------------- Sign-in card */
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    padding: clamp(26px, 5vw, 40px) clamp(20px, 5vw, 38px);
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: clamp(22px, 4vw, 30px);
+}
+.auth-mark {
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 800;
+    font-size: 1.15rem;
+    box-shadow: var(--shadow-sm);
+}
+.auth-brand-text strong {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+.auth-brand-text span {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+}
+
+.auth-title {
+    font-size: clamp(1.45rem, 1.1rem + 1.6vw, 1.8rem);
+    margin-bottom: 6px;
+}
+.auth-sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: clamp(20px, 4vw, 28px);
+}
+
+/* ------------------------------------------------------------- Error banner */
+.auth-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+    padding: 12px 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+    background: var(--danger-soft);
+    color: var(--text);
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+.auth-alert[hidden] { display: none; }
+.auth-alert svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--danger); margin-top: 1px; }
+.auth-alert code {
+    font-size: 0.82em;
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: var(--glass-sunken);
+}
+
+/* ------------------------------------------------------------------ Fields */
+.auth-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.field-group { display: flex; flex-direction: column; gap: 7px; }
+.field-group > label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-2);
+    letter-spacing: 0.01em;
+}
+
+.password-wrap { position: relative; }
+.password-wrap .field { padding-right: 58px; }
+
+/* 48px tap target sitting inside the field's right edge. */
+.reveal-btn {
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    transform: translateY(-50%);
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--muted);
+    transition: color var(--t-fast), background var(--t-fast);
+}
+.reveal-btn:hover { color: var(--text); background: var(--glass-hover); }
+.reveal-btn svg { width: 20px; height: 20px; }
+
+.auth-submit { width: 100%; margin-top: var(--sp-1); }
+
+.auth-foot {
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--glass-border);
+    font-size: 0.78rem;
+    color: var(--faint);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------- Small screens */
+@media (max-width: 380px) {
+    .auth-card { border-radius: var(--r-lg); }
+    .auth-brand { gap: var(--sp-2); }
+}

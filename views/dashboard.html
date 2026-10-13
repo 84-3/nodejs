@@ -1,207 +1,310 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#08090d">
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem("sfxdarei-theme");
+                document.documentElement.setAttribute("data-theme", saved === "light" ? "light" : "dark");
+            } catch (e) { /* keep the dark default */ }
+        })();
+    </script>
     <title>SFXDarei Manager</title>
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="/css/theme.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
-<div class="app">
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">S</div>
-            <div>
-                <strong>SFXDarei</strong>
-                <span>Manager</span>
-            </div>
-        </div>
+    <a class="skip-link" href="#main">Skip to content</a>
 
-        <nav>
-            <button class="nav-item active" data-section="dashboard">
-                <span>⌂</span> Dashboard
-            </button>
-            <button class="nav-item" data-section="users">
-                <span>◉</span> Users
-            </button>
-            <button class="nav-item" data-section="analytics">
-                <span>◔</span> Analytics
-            </button>
-            <button class="nav-item" data-section="script">
-                <span>⌘</span> Script
-            </button>
-        </nav>
-
-        <div class="sidebar-footer">
-            <span class="status-dot"></span>
-            Railway deployment
-        </div>
-    </aside>
-
-    <main class="main">
-        <header class="topbar">
-            <div>
-                <h1 id="page-title">Dashboard</h1>
-                <p id="page-subtitle">Manage your script and authorized users.</p>
-            </div>
-            <button class="refresh-btn" id="refresh">Refresh</button>
-        </header>
-
-        <section id="dashboard-section" class="section active">
-            <div class="cards">
-                <div class="card">
-                    <span class="card-label">Authorized users</span>
-                    <strong id="user-count">—</strong>
+    <div class="app">
+        <!-- ============================ Sidebar ============================ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="side-head">
+                <div class="brand">
+                    <span class="brand-mark" aria-hidden="true">S</span>
+                    <span class="brand-text">
+                        <strong>SFXDarei</strong>
+                        <span>Manager</span>
+                    </span>
                 </div>
-                <div class="card">
-                    <span class="card-label">Branch</span>
-                    <strong>main</strong>
-                </div>
-                <div class="card">
-                    <span class="card-label">Repository</span>
-                    <strong>84-3/nodejs</strong>
-                </div>
+                <button class="icon-btn side-close" id="nav-close" type="button" aria-label="Close navigation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" aria-hidden="true">
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                    </svg>
+                </button>
             </div>
 
-            <div class="panel">
-                <div class="panel-header">
-                    <div>
-                        <h2>Latest commit</h2>
-                        <p>The commit Railway uses for deployment.</p>
+            <nav class="nav" aria-label="Primary">
+                <button class="nav-item active" data-section="dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="7.5" height="7.5" rx="1.6"></rect>
+                        <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"></rect>
+                        <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"></rect>
+                        <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"></rect>
+                    </svg>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" data-section="users">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M16 20v-1.6a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"></path>
+                        <circle cx="9" cy="7" r="3.2"></circle>
+                        <path d="M22 20v-1.6a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.9a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>Users</span>
+                </button>
+                <button class="nav-item" data-section="analytics">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="4" y1="20" x2="4" y2="11"></line>
+                        <line x1="10" y1="20" x2="10" y2="5"></line>
+                        <line x1="16" y1="20" x2="16" y2="13"></line>
+                        <line x1="21" y1="20" x2="21" y2="8"></line>
+                    </svg>
+                    <span>Analytics</span>
+                </button>
+                <button class="nav-item" data-section="script">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="9 6 3 12 9 18"></polyline>
+                        <polyline points="15 6 21 12 15 18"></polyline>
+                    </svg>
+                    <span>Script</span>
+                </button>
+            </nav>
+
+            <div class="side-foot">
+                <span class="badge">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    Powered by AzureVM
+                </span>
+                <div class="side-actions">
+                    <button class="icon-btn" type="button" data-theme-toggle
+                            aria-pressed="false" aria-label="Switch to light theme">
+                        <span data-theme-icon aria-hidden="true">☀</span>
+                    </button>
+                    <form method="post" action="/logout">
+                        <button class="icon-btn" type="submit" aria-label="Sign out" title="Sign out">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                <polyline points="16 17 21 12 16 7"></polyline>
+                                <line x1="21" y1="12" x2="9" y2="12"></line>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ============================= Content ============================ -->
+        <div class="content">
+            <header class="appbar">
+                <div class="appbar-inner">
+                    <button class="icon-btn nav-toggle" id="nav-toggle" type="button"
+                            aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+                        <span class="hamburger" aria-hidden="true"></span>
+                    </button>
+
+                    <div class="appbar-title">
+                        <h1 id="page-title">Dashboard</h1>
+                        <p id="page-subtitle">Manage your script and authorized users.</p>
+                    </div>
+
+                    <div class="appbar-actions">
+                        <button class="btn btn-ghost" id="refresh" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                                <polyline points="21 3 21 9 15 9"></polyline>
+                            </svg>
+                            <span class="btn-label">Refresh</span>
+                        </button>
                     </div>
                 </div>
-                <div id="commit-info" class="commit-info">Loading…</div>
-            </div>
-        </section>
+            </header>
 
-        <section id="users-section" class="section">
-            <div class="panel">
-                <div class="panel-header">
-                    <div>
-                        <h2>Authorized users</h2>
-                        <p>Changes are committed directly to GitHub.</p>
+            <main class="main" id="main">
+                <!-- ------------------------- Overview ------------------------- -->
+                <section id="dashboard-section" class="section active">
+                    <div class="stat-grid">
+                        <article class="stat glass">
+                            <span class="stat-label">Authorized users</span>
+                            <strong class="stat-value" id="user-count">—</strong>
+                            <span class="stat-foot">Accounts allowed to run the script</span>
+                        </article>
+                        <article class="stat glass">
+                            <span class="stat-label">Branch</span>
+                            <strong class="stat-value">main</strong>
+                            <span class="stat-foot">Deployment branch</span>
+                        </article>
+                        <article class="stat glass">
+                            <span class="stat-label">Repository</span>
+                            <strong class="stat-value">84-3/nodejs</strong>
+                            <span class="stat-foot">Content source on GitHub</span>
+                        </article>
                     </div>
-                    <button class="primary-btn" id="add-user">+ Add user</button>
-                </div>
 
-                <div class="search-row">
-                    <input id="user-search" type="search" placeholder="Search usernames…">
-                    <span id="user-total" class="muted">— users</span>
-                </div>
+                    <article class="panel glass">
+                        <header class="panel-head">
+                            <div>
+                                <h2>Latest commit</h2>
+                                <p>The commit Railway uses for deployment.</p>
+                            </div>
+                        </header>
+                        <div id="commit-info" class="commit-info">Loading…</div>
+                    </article>
+                </section>
 
-                <div id="users-list" class="users-list">Loading…</div>
-            </div>
-        </section>
+                <!-- --------------------------- Users -------------------------- -->
+                <section id="users-section" class="section">
+                    <article class="panel glass">
+                        <header class="panel-head">
+                            <div>
+                                <h2>Authorized users</h2>
+                                <p>Changes are committed directly to GitHub.</p>
+                            </div>
+                            <button class="btn btn-primary" id="add-user" type="button">+ Add user</button>
+                        </header>
 
-        <section id="analytics-section" class="section">
-            <div class="cards">
-                <div class="card">
-                    <span class="card-label">Total executions</span>
-                    <strong id="analytics-total">—</strong>
-                </div>
-                <div class="card">
-                    <span class="card-label">Executors</span>
-                    <strong id="analytics-executor-count">—</strong>
-                </div>
-                <div class="card">
-                    <span class="card-label">Devices</span>
-                    <strong id="analytics-device-count">—</strong>
-                </div>
-            </div>
-        
-            <div class="analytics-grid">
-                <div class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Executors</h2>
-                            <p>Which executors are being used.</p>
+                        <div class="toolbar">
+                            <input class="field" id="user-search" type="search"
+                                   placeholder="Search usernames…" aria-label="Search authorized users">
+                            <span id="user-total" class="meta">— users</span>
                         </div>
+
+                        <div id="users-list" class="user-list">Loading…</div>
+                    </article>
+                </section>
+
+                <!-- ------------------------- Analytics ------------------------ -->
+                <section id="analytics-section" class="section">
+                    <div class="stat-grid">
+                        <article class="stat glass">
+                            <span class="stat-label">Total executions</span>
+                            <strong class="stat-value" id="analytics-total">—</strong>
+                            <span class="stat-foot">Recorded runs</span>
+                        </article>
+                        <article class="stat glass">
+                            <span class="stat-label">Executors</span>
+                            <strong class="stat-value" id="analytics-executor-count">—</strong>
+                            <span class="stat-foot">Distinct executors used</span>
+                        </article>
+                        <article class="stat glass">
+                            <span class="stat-label">Devices</span>
+                            <strong class="stat-value" id="analytics-device-count">—</strong>
+                            <span class="stat-foot">Distinct devices seen</span>
+                        </article>
                     </div>
-        
-                    <div class="chart-area">
-                        <div id="executor-chart" class="pie-chart"></div>
-                        <div id="executor-legend" class="chart-legend"></div>
+
+                    <div class="analytics-grid">
+                        <article class="panel glass">
+                            <header class="panel-head">
+                                <div>
+                                    <h2>Executors</h2>
+                                    <p>Which executors are being used.</p>
+                                </div>
+                            </header>
+                            <div class="chart-area">
+                                <div id="executor-chart" class="pie-chart" role="img" aria-label="Executor distribution"></div>
+                                <div id="executor-legend" class="chart-legend"></div>
+                            </div>
+                        </article>
+
+                        <article class="panel glass">
+                            <header class="panel-head">
+                                <div>
+                                    <h2>Devices</h2>
+                                    <p>Where executions are happening.</p>
+                                </div>
+                            </header>
+                            <div class="chart-area">
+                                <div id="device-chart" class="pie-chart" role="img" aria-label="Device distribution"></div>
+                                <div id="device-legend" class="chart-legend"></div>
+                            </div>
+                        </article>
                     </div>
-                </div>
-        
-                <div class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Devices</h2>
-                            <p>Where executions are happening.</p>
+
+                    <article class="panel glass">
+                        <header class="panel-head">
+                            <div>
+                                <h2>Authorized users</h2>
+                                <p>Select a user to view every recorded execution.</p>
+                            </div>
+                        </header>
+                        <div id="analytics-users" class="analytics-users">Loading…</div>
+                    </article>
+
+                    <article id="execution-history-panel" class="panel glass hidden">
+                        <header class="panel-head">
+                            <div>
+                                <h2 id="history-title">Execution history</h2>
+                                <p>Every recorded execution for this user.</p>
+                            </div>
+                        </header>
+                        <div id="execution-history" class="execution-history">Loading…</div>
+                    </article>
+                </section>
+
+                <!-- --------------------------- Script ------------------------- -->
+                <section id="script-section" class="section">
+                    <article class="panel glass">
+                        <header class="panel-head">
+                            <div>
+                                <h2>Roblox script</h2>
+                                <p>Changes are committed to <code>script/script.lua</code>.</p>
+                            </div>
+                            <button class="btn btn-primary" id="save-script" type="button">Save &amp; Commit</button>
+                        </header>
+
+                        <div class="editor-wrap">
+                            <div class="editor-bar">
+                                <span class="file">script.lua</span>
+                                <span id="script-state">Loading…</span>
+                            </div>
+                            <textarea id="script-editor" spellcheck="false"
+                                      aria-label="Roblox script contents"></textarea>
                         </div>
-                    </div>
-        
-                    <div class="chart-area">
-                        <div id="device-chart" class="pie-chart"></div>
-                        <div id="device-legend" class="chart-legend"></div>
-                    </div>
-                </div>
-            </div>
-        
-            <div class="panel">
-                <div class="panel-header">
-                    <div>
-                        <h2>Authorized users</h2>
-                        <p>Click a user to view every recorded execution.</p>
-                    </div>
-                </div>
-        
-                <div id="analytics-users" class="analytics-users">
-                    Loading…
-                </div>
-            </div>
-        
-            <div id="execution-history-panel" class="panel hidden">
-                <div class="panel-header">
-                    <div>
-                        <h2 id="history-title">Execution history</h2>
-                        <p>Every recorded execution for this user.</p>
-                    </div>
-                </div>
-        
-                <div id="execution-history" class="execution-history">
-                    Loading…
-                </div>
-            </div>
-        </section>
+                    </article>
+                </section>
+            </main>
 
-        <section id="script-section" class="section">
-            <div class="panel script-panel">
-                <div class="panel-header">
-                    <div>
-                        <h2>Roblox script</h2>
-                        <p>Changes are committed to <code>script/script.lua</code>.</p>
-                    </div>
-                    <button class="primary-btn" id="save-script">Save &amp; Commit</button>
-                </div>
-
-                <div class="editor-wrap">
-                    <div class="editor-bar">
-                        <span>script.lua</span>
-                        <span id="script-state">Loading…</span>
-                    </div>
-                    <textarea id="script-editor" spellcheck="false"></textarea>
-                </div>
-            </div>
-        </section>
-    </main>
-</div>
-
-<div id="modal" class="modal hidden">
-    <div class="modal-card">
-        <button class="modal-close" id="modal-close">×</button>
-        <h2 id="modal-title">Add user</h2>
-        <p id="modal-text">Enter the Roblox username you want to authorize.</p>
-        <input id="modal-input" type="text" maxlength="32" autocomplete="off" placeholder="Username">
-        <div class="modal-actions">
-            <button class="secondary-btn" id="modal-cancel">Cancel</button>
-            <button class="primary-btn" id="modal-confirm">Confirm</button>
+            <footer class="app-footer">
+                SFXDarei Manager · content synced from GitHub
+            </footer>
         </div>
     </div>
-</div>
 
-<div id="toast-container"></div>
-<script src="/js/dashboard.js"></script>
+    <!-- Drawer backdrop (mobile); toggled via the `hidden` attribute. -->
+    <button class="sidebar-overlay" id="sidebar-overlay" type="button"
+            tabindex="-1" aria-label="Close navigation" hidden></button>
+
+    <!-- ============================== Modal ============================== -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <button class="modal-close" id="modal-close" type="button" aria-label="Close dialog">×</button>
+            <h2 id="modal-title">Add user</h2>
+            <p id="modal-text">Enter the Roblox username you want to authorize.</p>
+            <input class="field" id="modal-input" type="text" maxlength="32"
+                   autocomplete="off" placeholder="Username" aria-label="Roblox username">
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="modal-cancel" type="button">Cancel</button>
+                <button class="btn btn-primary" id="modal-confirm" type="button">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="/js/theme.js" defer></script>
+    <script src="/js/dashboard.js"></script>
 </body>
 </html>

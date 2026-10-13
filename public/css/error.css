@@ -1,0 +1,46 @@
+/* ==========================================================================
+   SFXDarei — error.css  (404 / not-found view)
+   Depends on theme.css for tokens, .glass, .btn.
+   ========================================================================== */
+
+.error-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-5);
+    min-height: 100dvh;
+    padding: max(24px, env(safe-area-inset-top)) var(--sp-4)
+             max(24px, env(safe-area-inset-bottom));
+    text-align: center;
+}
+
+.error-card {
+    width: min(460px, 100%);
+    padding: clamp(30px, 6vw, 48px) clamp(22px, 5vw, 42px);
+    border-radius: var(--r-xl);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.error-mark {
+    font-size: clamp(2.4rem, 1.7rem + 4.5vw, 3.4rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    color: var(--accent);
+    margin-bottom: 12px;
+}
+.error-card h1 { font-size: clamp(1.2rem, 1rem + 1.2vw, 1.5rem); margin-bottom: 10px; }
+.error-card p {
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.6;
+    margin-bottom: var(--sp-5);
+    max-width: 34ch;
+}
+
+.error-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; }
+
+.error-foot { color: var(--faint); font-size: 0.78rem; }
