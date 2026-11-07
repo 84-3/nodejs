@@ -98,6 +98,7 @@ async function initDatabase() {
                     player_card TEXT,
                     player_cards TEXT NOT NULL DEFAULT '{}',
                     jersey TEXT,
+                    visual_settings TEXT NOT NULL DEFAULT '{}',
                     updated_at INTEGER NOT NULL,
                     last_seen INTEGER NOT NULL
                 )
@@ -111,6 +112,12 @@ async function initDatabase() {
 
             try {
                 await client.execute(`ALTER TABLE user_states ADD COLUMN player_cards TEXT NOT NULL DEFAULT '{}'`);
+            } catch (error) {
+                if (!/duplicate column|already exists/i.test(String(error?.message || error))) throw error;
+            }
+
+            try {
+                await client.execute(`ALTER TABLE user_states ADD COLUMN visual_settings TEXT NOT NULL DEFAULT '{}'`);
             } catch (error) {
                 if (!/duplicate column|already exists/i.test(String(error?.message || error))) throw error;
             }
@@ -205,12 +212,26 @@ function sanitizeRankedCardMetadata(value) {
         : 13;
     const normalizeCount = raw => {
         const numeric = Number(raw);
-        return Number.isFinite(numeric) ? Math.floor(Math.max(0, Math.min(2147483647, numeric))) : 0;
+        return Number.isFinite(numeric) ? Math.floor(Math.max(0, Math.min(1_000_000, numeric))) : 0;
     };
     return {
         seasonRank,
         wins: normalizeCount(value.wins ?? value.Wins),
         losses: normalizeCount(value.losses ?? value.Losses)
+    };
+}
+
+function sanitizeVisualSettings(value) {
+    if (!isPlainObject(value)) return { showOGStyle: false, winstreakEnabled: false, winstreakValue: "" };
+    const rawWinstreak = value.winstreakValue == null ? "" : String(value.winstreakValue);
+    if (rawWinstreak.length > 64) throw new Error("Winstreak text is too long.");
+    const numericWinstreak = /^\s*[+-]?\d+\s*$/.test(rawWinstreak)
+        ? String(Math.floor(Math.max(0, Math.min(1_000_000, Number(rawWinstreak)))))
+        : rawWinstreak;
+    return {
+        showOGStyle: value.showOGStyle === true,
+        winstreakEnabled: value.winstreakEnabled === true,
+        winstreakValue: numericWinstreak
     };
 }
 
@@ -257,10 +278,14 @@ function sanitizeString(value, maxLength = 100) {
 function sanitizeUpdate(type, value) {
     if (type === "scoreEffects") return sanitizeEffects(value);
     if (type === "playerCards") return sanitizePlayerCards(value);
+    if (type === "visualSettings") return sanitizeVisualSettings(value);
     if (type === "scoreEffect") return sanitizeString(value);
 
     if (["level", "nametag", "playerCard", "jersey", "nextScoreEffect"].includes(type)) {
-        const text = sanitizeString(value);
+        let text = sanitizeString(value);
+        if (type === "level" && text && /^\s*[+-]?\d+\s*$/.test(text)) {
+            text = String(Math.floor(Math.max(0, Math.min(1_000_000, Number(text)))));
+        }
         if (type === "nextScoreEffect" && !text) throw new Error("Invalid next score effect.");
         return text;
     }
@@ -272,6 +297,8 @@ function decodeState(row) {
     let playerCards = {};
     try { scoreEffects = JSON.parse(row.score_effects || "{}"); } catch { scoreEffects = {}; }
     try { playerCards = JSON.parse(row.player_cards || "{}"); } catch { playerCards = {}; }
+    let visualSettings = {};
+    try { visualSettings = JSON.parse(row.visual_settings || "{}"); } catch { visualSettings = {}; }
 
     if (Object.keys(playerCards).length === 0 && typeof row.player_card === "string" && row.player_card !== "") {
         playerCards[row.player_card] = 100;
@@ -285,6 +312,7 @@ function decodeState(row) {
         nametag: row.nametag || null,
         playerCard: row.player_card || null,
         playerCards: sanitizePlayerCards(playerCards),
+        visualSettings: sanitizeVisualSettings(visualSettings),
         jersey: row.jersey || null,
         updatedAt: row.updated_at,
         lastSeen: row.last_seen
@@ -293,7 +321,7 @@ function decodeState(row) {
 
 function encodeEvent(row) {
     let value = row.value;
-    if (["scoreEffects", "playerCards"].includes(row.type)) {
+    if (["scoreEffects", "playerCards", "visualSettings"].includes(row.type)) {
         try { value = JSON.parse(value || "{}"); } catch { value = {}; }
     }
     return { id: String(row.id), username: row.username, type: row.type, value, createdAt: row.created_at };
@@ -316,7 +344,7 @@ router.get("/state", requireAuthorized, async (req, res) => {
         await initDatabase();
         const authorizedUsers = await getAuthorizedUsers();
         const result = await getDatabase().execute(`
-            SELECT username, score_effects, next_score_effect, level, nametag,
+            SELECT username, score_effects, next_score_effect, level, nametag, visual_settings,
                    player_card, player_cards, jersey, updated_at, last_seen
             FROM user_states
         `);
@@ -364,7 +392,7 @@ router.post("/update", requireAuthorized, async (req, res) => {
 
         const stateResult = await client.execute({
             sql: `SELECT score_effects, next_score_effect, level, nametag,
-                         player_card, player_cards, jersey
+                         player_card, player_cards, jersey, visual_settings
                   FROM user_states WHERE username = ? LIMIT 1`,
             args: [username]
         });
@@ -376,6 +404,7 @@ router.post("/update", requireAuthorized, async (req, res) => {
         let playerCard = null;
         let playerCards = {};
         let jersey = null;
+        let visualSettings = { showOGStyle: false, winstreakEnabled: false, winstreakValue: "" };
 
         if (stateResult.rows.length) {
             const row = stateResult.rows[0];
@@ -390,6 +419,7 @@ router.post("/update", requireAuthorized, async (req, res) => {
                 playerCards[playerCard] = 100;
             }
             jersey = row.jersey || null;
+            try { visualSettings = sanitizeVisualSettings(JSON.parse(row.visual_settings || "{}")); } catch { visualSettings = { showOGStyle: false, winstreakEnabled: false, winstreakValue: "" }; }
         }
         scoreEffects = sanitizeEffects(scoreEffects);
 
@@ -416,13 +446,15 @@ router.post("/update", requireAuthorized, async (req, res) => {
                 : (cardEntries.length > 0 ? cardEntries[0][0] : null);
         } else if (type === "jersey") {
             jersey = value;
+        } else if (type === "visualSettings") {
+            visualSettings = value;
         }
 
         await client.execute({
             sql: `INSERT INTO user_states (
                     username, score_effects, next_score_effect, level, nametag,
-                    player_card, player_cards, jersey, updated_at, last_seen
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    player_card, player_cards, jersey, visual_settings, updated_at, last_seen
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(username) DO UPDATE SET
                     score_effects = excluded.score_effects,
                     next_score_effect = excluded.next_score_effect,
@@ -431,15 +463,16 @@ router.post("/update", requireAuthorized, async (req, res) => {
                     player_card = excluded.player_card,
                     player_cards = excluded.player_cards,
                     jersey = excluded.jersey,
+                    visual_settings = excluded.visual_settings,
                     updated_at = excluded.updated_at,
                     last_seen = excluded.last_seen`,
             args: [username, JSON.stringify(scoreEffects), nextScoreEffect, level, nametag,
-                playerCard, JSON.stringify(playerCards), jersey, now, now]
+                playerCard, JSON.stringify(playerCards), jersey, JSON.stringify(visualSettings), now, now]
         });
 
         await client.execute({
             sql: `INSERT INTO sync_events (username, type, value, created_at) VALUES (?, ?, ?, ?)`,
-            args: [username, type, ["scoreEffects", "playerCards"].includes(type) ? JSON.stringify(value) : value, now]
+            args: [username, type, ["scoreEffects", "playerCards", "visualSettings"].includes(type) ? JSON.stringify(value) : value, now]
         });
 
         if (Math.random() < 0.03) void cleanupOldEvents();
