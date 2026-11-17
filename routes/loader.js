@@ -4,26 +4,42 @@ const { getFile } = require("../github");
 
 const router = express.Router();
 
-router.get("/loader", async (req, res) => {
+const NO_CACHE_HEADERS = {
+    "Cache-Control": "private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+    "CDN-Cache-Control": "no-store",
+    "Vercel-CDN-Cache-Control": "no-store",
+    "Surrogate-Control": "no-store",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "X-Accel-Expires": "0",
+    "Vary": "*"
+};
+
+function disableCache(req, res, next) {
+    res.set(NO_CACHE_HEADERS);
+    next();
+}
+
+router.get("/loader", disableCache, async (req, res) => {
     try {
+        // Fetch the latest script on every request.
         const file = await getFile("script/script.lua");
 
-        res.set("Content-Type", "text/plain; charset=utf-8");
-        res.set(
-            "Cache-Control",
-            "no-store, no-cache, must-revalidate, proxy-revalidate"
-        );
-        res.set("Pragma", "no-cache");
-        res.set("Expires", "0");
+        if (!file || typeof file.content !== "string") {
+            throw new Error("Invalid script response from GitHub.");
+        }
+        return res
+            .status(200)
+            .type("text/plain")
+            .end(file.content);
 
-        return res.status(200).send(file.content);
     } catch (error) {
         console.error("[Loader] Failed to fetch script:", error);
-
+        // Cache headers are already applied, even for failed requests.
         return res
             .status(500)
-            .set("Content-Type", "text/plain; charset=utf-8")
-            .send("-- Failed to load script.");
+            .type("text/plain")
+            .end("-- Failed to load script.");
     }
 });
 
